@@ -1,0 +1,402 @@
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  REUSABLE WORKFLOW: Unified Multi-Repo Deployment Pipeline (ADR-120)      ║
+# ║  Staging (main) → Production (promote/tag) mit Health-Check + Rollback    ║
+# ║  Usage: uses: iilgmbh/shared-ci/.github/workflows/_deploy-unified.yml@v1
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+# ⚠️ CONSTRAINT: Reusable workflows (workflow_call) support permissions ONLY
+#    at workflow-level, NOT at job-level. Job-level permissions cause
+#    startup_failure (0 jobs, no logs). Callers should also set permissions.
+
+name: "🚀 Deploy Unified (ADR-120)"
+
+permissions:
+  contents: read
+  packages: write
+
+on:
+  workflow_call:
+    inputs:
+      app_name:
+        description: "App-Name (z.B. risk-hub) — wird als GHCR Image-Name verwendet"
+        required: true
+        type: string
+      app_path:
+        description: "Absoluter Pfad auf dem Server (z.B. /opt/risk-hub)"
+        required: true
+        type: string
+      health_check_url:
+        description: "Health-Check URL — MUSS auf /healthz/ enden (ADR-022)"
+        required: false
+        type: string
+        default: ""
+      image_tag_override:
+        description: "Rollback auf expliziten Image-Tag (z.B. v1.2.1) — leer = auto"
+        required: false
+        type: string
+        default: ""
+      target_environment:
+        description: "Ziel-Environment erzwingen (leer=auto, staging, production) — für Promotion"
+        required: false
+        type: string
+        default: ""
+      dockerfile_path:
+        description: "Pfad zum Dockerfile relativ zum Repo-Root (default: Dockerfile)"
+        required: false
+        type: string
+        default: "Dockerfile"
+      import_smoke:
+        description: >-
+          Shell-Kommando, das NACH dem Build IM frisch gebauten Image läuft, BEVOR
+          deployt wird. Non-zero exit lässt den build-Job scheitern → alle Deploys
+          (needs: build) werden geskippt → ein nicht-startbares Image erreicht Prod
+          nie. Fängt Import-Contract-Drift (ModuleNotFoundError/ImportError), die
+          erst zur Laufzeit zuschlägt (z.B. nach Paket-Restructure).
+          Leer (default) = Gate aus, Verhalten unverändert.
+          Django-Beispiel: "SECRET_KEY=ci-smoke DJANGO_SETTINGS_MODULE=config.settings.test python manage.py check"
+        required: false
+        type: string
+        default: ""
+      notify_discord:
+        description: "Discord Deploy-Notification senden"
+        required: false
+        type: boolean
+        default: true
+      runs_on:
+        description: "Runner label (default: self-hosted). Override with ubuntu-latest if no runner registered."
+        required: false
+        type: string
+        default: "self-hosted"
+    secrets:
+      DEPLOY_SSH_KEY:
+        description: "SSH Key für Production (vorhandener Secret-Name)"
+        required: false
+      DEPLOY_HOST:
+        description: "Production Host (vorhandener Secret-Name)"
+        required: false
+      DEPLOY_USER:
+        description: "SSH User für Production (vorhandener Secret-Name)"
+        required: false
+      DEPLOY_SSH_FINGERPRINT:
+        required: false
+      STAGING_SSH_KEY:
+        required: false
+      STAGING_HOST:
+        required: false
+      STAGING_USER:
+        required: false
+      STAGING_SSH_FINGERPRINT:
+        required: false
+      DISCORD_WEBHOOK:
+        required: false
+      PROJECT_PAT:
+        description: "GitHub PAT for cloning private repos during Docker build"
+        required: false
+
+jobs:
+  # ── JOB 1: Environment + Image-Tag bestimmen ──────────────────────────────
+  resolve:
+    name: "🔍 Resolve"
+    runs-on: ${{ inputs.runs_on }}
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+      deploy_staging: ${{ steps.env.outputs.deploy_staging }}
+      deploy_prod: ${{ steps.env.outputs.deploy_prod }}
+    steps:
+      - name: Resolve environment
+        id: env
+        run: |
+          TARGET="${{ inputs.target_environment }}"
+
+          # Explizites target_environment überschreibt alles (Promotion-Flow)
+          if [[ -n "$TARGET" ]]; then
+            echo "environment=$TARGET" >> "$GITHUB_OUTPUT"
+            if [[ "$TARGET" == "production" ]]; then
+              echo "deploy_staging=false" >> "$GITHUB_OUTPUT"
+              echo "deploy_prod=true"     >> "$GITHUB_OUTPUT"
+            else
+              echo "deploy_staging=true"  >> "$GITHUB_OUTPUT"
+              echo "deploy_prod=false"    >> "$GITHUB_OUTPUT"
+            fi
+          # Auto-Detect: Tag → Production, main → Staging
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "environment=production" >> "$GITHUB_OUTPUT"
+            echo "deploy_staging=false"   >> "$GITHUB_OUTPUT"
+            echo "deploy_prod=true"       >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=staging"    >> "$GITHUB_OUTPUT"
+            echo "deploy_staging=true"    >> "$GITHUB_OUTPUT"
+            echo "deploy_prod=false"      >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=staging"    >> "$GITHUB_OUTPUT"
+            echo "deploy_staging=true"    >> "$GITHUB_OUTPUT"
+            echo "deploy_prod=false"      >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [[ -n "${{ inputs.image_tag_override }}" ]]; then
+            echo "image_tag=${{ inputs.image_tag_override }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "image_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            SHA="${{ github.sha }}"
+            echo "image_tag=main-${SHA:0:7}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── JOB 2: Build & Push Docker Image ──────────────────────────────────────
+  build:
+    name: "🐳 Build"
+    runs-on: ${{ inputs.runs_on }}
+    needs: resolve
+    if: inputs.image_tag_override == ''
+    env:
+      IMAGE_NAME: ${{ github.repository_owner }}/${{ inputs.app_name }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ inputs.dockerfile_path }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ env.IMAGE_NAME }}:${{ needs.resolve.outputs.image_tag }}
+            ghcr.io/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_SHA=${{ github.sha }}
+            APP_VERSION=${{ needs.resolve.outputs.image_tag }}
+          secrets: |
+            PROJECT_PAT=${{ secrets.PROJECT_PAT }}
+
+      # Gate: ein nicht-startbares Image darf nicht deployt werden. Läuft das
+      # consumer-definierte import_smoke-Kommando IM frisch gebauten Image; bei
+      # non-zero exit fällt dieser build-Job → deploy-* (needs: build) skippen.
+      # Fängt Import-Contract-Drift (ModuleNotFoundError/ImportError), die sonst
+      # erst Wochen später als Prod-Crash-Loop sichtbar wird. Opt-in (leer = aus).
+      - name: Import smoke (gate deploy on a runnable image)
+        if: ${{ inputs.import_smoke != '' }}
+        env:
+          SMOKE_CMD: ${{ inputs.import_smoke }}
+        run: |
+          IMG="ghcr.io/${{ env.IMAGE_NAME }}:${{ needs.resolve.outputs.image_tag }}"
+          echo "::group::Import smoke on $IMG"
+          echo "cmd: $SMOKE_CMD"
+          docker pull "$IMG"
+          docker run --rm "$IMG" sh -c "$SMOKE_CMD"
+          echo "::endgroup::"
+
+  # ── JOB 3a: Deploy to Staging ─────────────────────────────────────────────
+  deploy-staging:
+    name: "🧪 Staging"
+    runs-on: ${{ inputs.runs_on }}
+    needs: [resolve, build]
+    if: |
+      always() &&
+      needs.resolve.outputs.deploy_staging == 'true' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped')
+    concurrency:
+      group: deploy-${{ inputs.app_name }}-staging
+      cancel-in-progress: true
+    environment:
+      name: staging
+      url: https://staging.${{ inputs.app_name }}.iil.pet
+    steps:
+      - uses: actions/checkout@v6
+
+      # Sync staging compose file from the consuming repo to the host.
+      # Without this, deploy.sh runs `docker compose pull` against
+      # whatever stale compose file is on the server (may reference a
+      # removed service / wrong image path / outdated port mapping).
+      - name: Sync docker-compose.staging.yml to host
+        if: hashFiles('docker-compose.staging.yml') != ''
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          fingerprint: ${{ secrets.STAGING_SSH_FINGERPRINT }}
+          source: "docker-compose.staging.yml"
+          # scp-action treats `target` as a directory and creates the file
+          # inside it. deploy.sh detects `docker-compose.staging.yml` for the
+          # staging environment automatically (see ADR-022).
+          target: "${{ inputs.app_path }}"
+          overwrite: true
+
+      - name: Deploy to staging
+        uses: appleboy/ssh-action@v1.2.5
+        timeout-minutes: 15
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          fingerprint: ${{ secrets.STAGING_SSH_FINGERPRINT }}
+          script: |
+            set -euo pipefail
+            /opt/scripts/deploy.sh \
+              "${{ inputs.app_name }}" \
+              "${{ inputs.app_path }}" \
+              "${{ needs.resolve.outputs.image_tag }}" \
+              "staging" \
+              "${{ inputs.health_check_url }}"
+
+  # ── JOB 3b: Deploy to Production ──────────────────────────────────────────
+  # Self-hosted runners run ON prod-server → direct execution, no SSH needed.
+  # Falls back to SSH if runs_on != self-hosted (e.g. ubuntu-latest).
+  deploy-production:
+    name: "🚀 Production"
+    runs-on: ${{ inputs.runs_on }}
+    needs: [resolve, build]
+    if: |
+      always() &&
+      needs.resolve.outputs.deploy_prod == 'true' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped')
+    concurrency:
+      group: deploy-${{ inputs.app_name }}-production
+      cancel-in-progress: false
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v6
+
+      # ADR-021 §2.17 — fail-loud + atomic sync + compose_sha verify.
+      # ADR-021 §2.20 — deploy-intent manifest (Intent-Token).
+      #
+      # 1. Assert docker-compose.prod.yml present (fail-loud — no silent fallback).
+      # 2. Compute SHA-256 of the compose file.
+      # 3. Write .deploy-manifest.json: commit + run_id + compose_sha + timestamp.
+      #    deploy.sh reads this manifest as the CI Intent-Token (§2.20) and verifies
+      #    the on-host sha256 matches before running `docker compose up` (§2.17).
+      # 4. Atomic sync: copy compose to temp path, verify sha, rename atomically.
+      - name: Assert compose + write manifest + atomic sync (ADR-021 §2.17/§2.20)
+        id: compose_sync
+        run: |
+          set -euo pipefail
+
+          # §2.17 fail-loud
+          if [ ! -f docker-compose.prod.yml ]; then
+            echo "::error title=ADR-021 §2.17::docker-compose.prod.yml absent — refusing to deploy against stale host compose."
+            exit 1
+          fi
+
+          # compute sha256
+          COMPOSE_SHA=$(sha256sum docker-compose.prod.yml | awk '{print $1}')
+          echo "compose_sha=${COMPOSE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "✅ compose sha256: ${COMPOSE_SHA}"
+
+          # write intent manifest (§2.20)
+          cat > .deploy-manifest.json <<JSON
+          {
+            "app":         "${{ inputs.app_name }}",
+            "commit":      "${{ github.sha }}",
+            "run_id":      "${{ github.run_id }}",
+            "compose_sha": "${COMPOSE_SHA}",
+            "written_at":  "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          JSON
+
+          # atomic sync — self-hosted runner runs ON the prod server
+          if [ "${{ inputs.runs_on }}" != "ubuntu-latest" ]; then
+            TMP="${{ inputs.app_path }}/docker-compose.prod.yml.tmp$$"
+            cp docker-compose.prod.yml "$TMP"
+            # verify copy is intact before rename
+            COPY_SHA=$(sha256sum "$TMP" | awk '{print $1}')
+            if [ "$COPY_SHA" != "$COMPOSE_SHA" ]; then
+              rm -f "$TMP"
+              echo "::error::sha256 mismatch after copy (corrupt transfer)"
+              exit 1
+            fi
+            mv -f "$TMP" "${{ inputs.app_path }}/docker-compose.prod.yml"
+            cp .deploy-manifest.json "${{ inputs.app_path }}/.deploy-manifest.json"
+            echo "✅ atomic sync complete (self-hosted)"
+          fi
+
+      - name: Sync compose + manifest to host (remote runner)
+        if: startsWith(inputs.runs_on, 'ubuntu')
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          fingerprint: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
+          source: "docker-compose.prod.yml,.deploy-manifest.json"
+          target: "${{ inputs.app_path }}/"
+          overwrite: true
+
+      - name: Deploy to production (direct — self-hosted runner)
+        if: ${{ !startsWith(inputs.runs_on, 'ubuntu') }}
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          /opt/scripts/deploy.sh \
+            "${{ inputs.app_name }}" \
+            "${{ inputs.app_path }}" \
+            "${{ needs.resolve.outputs.image_tag }}" \
+            "production" \
+            "${{ inputs.health_check_url }}"
+
+      - name: Deploy to production (SSH — remote runner)
+        if: startsWith(inputs.runs_on, 'ubuntu')
+        uses: appleboy/ssh-action@v1.2.5
+        timeout-minutes: 15
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          fingerprint: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
+          script: |
+            set -euo pipefail
+            /opt/scripts/deploy.sh \
+              "${{ inputs.app_name }}" \
+              "${{ inputs.app_path }}" \
+              "${{ needs.resolve.outputs.image_tag }}" \
+              "production" \
+              "${{ inputs.health_check_url }}"
+
+  # ── JOB 4: Discord Notification ───────────────────────────────────────────
+  notify:
+    name: "📣 Notify"
+    runs-on: ${{ inputs.runs_on }}
+    needs: [resolve, deploy-staging, deploy-production]
+    if: always() && inputs.notify_discord
+    steps:
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          if [[ -z "$DISCORD_WEBHOOK" ]]; then exit 0; fi
+
+          ENV="${{ needs.resolve.outputs.environment }}"
+          TAG="${{ needs.resolve.outputs.image_tag }}"
+          APP="${{ inputs.app_name }}"
+
+          STAGING_RESULT="${{ needs.deploy-staging.result }}"
+          PROD_RESULT="${{ needs.deploy-production.result }}"
+
+          if [[ "$ENV" == "staging" && "$STAGING_RESULT" == "success" ]]; then
+            COLOR=3066993; STATUS="✅ Staging deploy erfolgreich"
+          elif [[ "$ENV" == "production" && "$PROD_RESULT" == "success" ]]; then
+            COLOR=3066993; STATUS="✅ Production deploy erfolgreich"
+          else
+            COLOR=15158332; STATUS="❌ Deploy fehlgeschlagen"
+          fi
+
+          curl -sf --max-time 10 -X POST "$DISCORD_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{\"embeds\":[{\"title\":\"$STATUS\",\"color\":$COLOR,\"fields\":[{\"name\":\"App\",\"value\":\"$APP\",\"inline\":true},{\"name\":\"Version\",\"value\":\"$TAG\",\"inline\":true},{\"name\":\"Env\",\"value\":\"$ENV\",\"inline\":true}]}]}"
