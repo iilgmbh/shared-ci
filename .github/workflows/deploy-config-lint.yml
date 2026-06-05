@@ -31,7 +31,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: iilgmbh/shared-ci
-          ref: main
+          # immutable: SHA der reusable-Workflow-Datei = exakt der vom Caller
+          # gepinnte Stand (@v1.0.1). Kein mutable `main` (Supply-Chain, Retro #3).
+          ref: ${{ github.workflow_sha }}
           path: shared-ci
       - name: Lint deploy-Workflows gegen Auto-Prod-Default
         run: python3 shared-ci/tools/deploy_config_lint.py caller/.github/workflows
