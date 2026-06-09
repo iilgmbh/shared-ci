@@ -24,6 +24,19 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Create job-local venv (REC-1 / platform#357)
+      shell: bash
+      # Self-hosted runners share a persistent setup-python tool-cache.
+      # A job-local venv in $RUNNER_TEMP gives each job its own site-packages
+      # while still sharing the pip wheel/download cache — eliminating the
+      # shared-mutable-state race that caused stale-code flakiness (PR #354).
+      # Adding to GITHUB_PATH makes this venv's pip/python the default for all
+      # subsequent steps in this action AND in the calling workflow.
+      run: |
+        python -m venv "$RUNNER_TEMP/iil-venv"
+        echo "$RUNNER_TEMP/iil-venv/bin" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/iil-venv/bin/pip" install --upgrade pip --quiet
+
     - name: Install requirements
       shell: bash
       run: |
@@ -116,11 +129,11 @@ runs:
             || python -m pip install "litellm>=1.30" -q \
             || echo "::warning::aifw present but litellm could not be installed — freshness probe may fail (platform#413)"
         fi
-        # Advisory: surface a broken --no-deps tree without hard-failing. The
-        # shared self-hosted tool-cache can carry PRE-EXISTING unrelated
-        # conflicts; a hard `pip check` would turn those into red CI for every
-        # consumer. Becomes a hard gate once job-local venv isolation lands (#357).
-        python -m pip check || echo "::warning::pip check reported issues after iil reinstall (advisory until venv isolation, #357)"
+        # Hard gate: job-local venv (above) guarantees a clean site-packages with
+        # no pre-existing tool-cache conflicts, so pip check can now be a real
+        # failure signal instead of an advisory (platform#357 landed).
+        # --force-reinstall remains as belt-and-suspenders; sunset tracked in #357.
+        python -m pip check
         # Freshness probe — guards the ORIGINAL flaky failure: stale tool-cache
         # code missing newer public-API symbols. Checks SYMBOLS, not __version__:
         # iil-aifw's release process leaves the wheel's in-code __version__ behind
