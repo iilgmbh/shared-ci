@@ -128,6 +128,14 @@ runs:
           python -c "import litellm" 2>/dev/null \
             || python -m pip install "litellm>=1.30" -q \
             || echo "::warning::aifw present but litellm could not be installed — freshness probe may fail (platform#413)"
+          # iil-aifw 0.11.4 added `tenacity>=8.2` as a runtime dep — same --no-deps
+          # gap as litellm; consumers not pinning tenacity (incl. repos that get
+          # aifw only from the DEFAULT list) then fail `pip check`. Surfaced by the
+          # learn-hub Wave-3 bump (ADR-242). Install only if missing (pin-safe:
+          # never touches aifw itself).
+          python -c "import tenacity" 2>/dev/null \
+            || python -m pip install "tenacity>=8.2" -q \
+            || echo "::warning::aifw present but tenacity could not be installed — pip check may fail"
         fi
         # Hard gate: job-local venv (above) guarantees a clean site-packages with
         # no pre-existing tool-cache conflicts, so pip check can now be a real
