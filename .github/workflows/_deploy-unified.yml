@@ -258,11 +258,17 @@ jobs:
       - name: Deploy to staging
         uses: appleboy/ssh-action@v1.2.5
         timeout-minutes: 15
+        env:
+          # shared-ci#10 Facette A: kurzlebiger Workflow-Token → deploy.sh loggt damit
+          # bei GHCR ein, statt an der manuell gepflegten Host-/opt/scripts/.ghcr_token zu hängen.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
           key: ${{ secrets.STAGING_SSH_KEY }}
           fingerprint: ${{ secrets.STAGING_SSH_FINGERPRINT }}
+          envs: GHCR_TOKEN,GHCR_USER
           script: |
             set -euo pipefail
             /opt/scripts/deploy.sh \
@@ -358,6 +364,10 @@ jobs:
       - name: Deploy to production (direct — self-hosted runner)
         if: ${{ !startsWith(inputs.runs_on, 'ubuntu') }}
         timeout-minutes: 15
+        env:
+          # shared-ci#10 Facette A — s. staging-Step.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         run: |
           set -euo pipefail
           /opt/scripts/deploy.sh \
@@ -371,11 +381,16 @@ jobs:
         if: startsWith(inputs.runs_on, 'ubuntu')
         uses: appleboy/ssh-action@v1.2.5
         timeout-minutes: 15
+        env:
+          # shared-ci#10 Facette A — s. staging-Step.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           fingerprint: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
+          envs: GHCR_TOKEN,GHCR_USER
           script: |
             set -euo pipefail
             /opt/scripts/deploy.sh \
