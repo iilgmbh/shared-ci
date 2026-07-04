@@ -67,6 +67,23 @@ on:
         required: false
         default: '.'
         type: string
+      mypy_blocking:
+        description: >-
+          mypy als bindendes Gate (Retro e17299 F6: blockierendes mypy darf bei
+          Konvergenz-Migrationen nicht still entfallen). Default false = non-blocking.
+        required: false
+        default: false
+        type: boolean
+      enable_bandit:
+        description: 'Run bandit SAST (non-blocking)'
+        required: false
+        default: false
+        type: boolean
+      bandit_args:
+        description: 'bandit target/args'
+        required: false
+        default: '-r src/'
+        type: string
       enable_build:
         description: >-
           Build the distribution (python -m build), validate metadata
@@ -225,10 +242,11 @@ jobs:
           triage_hint: "A secret is present in the artifact that would be PUBLISHED. ROTATE it and exclude it from the build (MANIFEST.in / package_data / [tool.setuptools] exclude). Do NOT suppress on intent — the artifact must not ship it."
 
   mypy:
-    name: "Type Check (mypy, non-blocking)"
+    name: "Type Check (mypy${{ inputs.mypy_blocking && ', blocking' || ', non-blocking' }})"
     if: ${{ inputs.enable_mypy }}
     runs-on: ${{ inputs.runs_on }}
-    continue-on-error: true
+    # mypy zählt im gate nur bei mypy_blocking (continue-on-error setzt sonst success)
+    continue-on-error: ${{ !inputs.mypy_blocking }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -280,3 +298,18 @@ jobs:
               && echo "✅ No known CVEs" \
               || echo "⚠️  CVEs found — see output above (non-blocking per caller opt-out)"
           fi
+
+  bandit:
+    name: "SAST (bandit, non-blocking)"
+    if: ${{ inputs.enable_bandit }}
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version }}
+      - name: bandit
+        run: |
+          pip install -q bandit
+          bandit ${{ inputs.bandit_args }}
