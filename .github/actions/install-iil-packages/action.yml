@@ -129,6 +129,18 @@ runs:
             || python -m pip install "litellm>=1.30" -q \
             || echo "::warning::aifw present but litellm could not be installed — freshness probe may fail (platform#413)"
         fi
+        # Generic repair for --no-deps refresh holes (Audit 2026-07-04, apo-hub#38:
+        # aifw 0.11.5 added `tenacity` → the hard pip-check below failed every
+        # consumer without it). The litellm guard above stays (import-time dep with
+        # version bound); THIS catches every future "requires X, which is not
+        # installed" generically, so new aifw deps never need another hardcode.
+        MISSING=$(python -m pip check 2>&1 \
+          | sed -n 's/.*requires \(.*\), which is not installed.*/\1/p' | sort -u)
+        if [ -n "$MISSING" ]; then
+          echo "::notice::repairing deps dropped by --no-deps refresh: $MISSING"
+          printf '%s\n' "$MISSING" | xargs -r -n1 python -m pip install -q \
+            || echo "::warning::dep repair incomplete — pip check below will fail"
+        fi
         # Hard gate: job-local venv (above) guarantees a clean site-packages with
         # no pre-existing tool-cache conflicts, so pip check can now be a real
         # failure signal instead of an advisory (platform#357 landed).
