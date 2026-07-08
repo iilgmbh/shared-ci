@@ -390,6 +390,42 @@ jobs:
             "production" \
             "${{ inputs.health_check_url }}"
 
+      - name: "Artefakt-Verify — läuft das frisch gebaute Image? (warn-only)"
+        # Fängt "grün aber stale": /healthz besteht der ALTE Container → deploy.sh meldet
+        # success, obwohl das neue Image nicht recreated wurde (Realfälle 2026-07-03:
+        # mcp-hub /mcp 404, travel-beat). WARN-ONLY + non-gating: bricht NIE den Deploy
+        # (continue-on-error + exit 0 in jedem Pfad, kein `set -e`). Promotion zu gating
+        # erst nach Fleet-Validierung (repo-health-rule-discipline). Nur self-hosted
+        # (direkter Docker-Zugriff); SSH-/ubuntu-Pfad wird still übersprungen.
+        if: ${{ always() && !startsWith(inputs.runs_on, 'ubuntu') }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          TAG="${{ needs.resolve.outputs.image_tag }}"
+          IMG="ghcr.io/${{ github.repository_owner }}/${{ inputs.app_name }}:${TAG}"
+          APP_PATH="${{ inputs.app_path }}"
+          command -v docker >/dev/null 2>&1 || exit 0     # kein Docker → still skip
+          [ -d "$APP_PATH" ] || exit 0                     # kein app_path → still skip
+          expected=$(docker image inspect "$IMG" --format '{{.Id}}' 2>/dev/null)
+          if [ -z "$expected" ]; then
+            echo "::warning title=Artefakt-Verify::gebautes Image $IMG lokal nicht gefunden — Verify übersprungen"
+            exit 0
+          fi
+          running=$( (cd "$APP_PATH" && docker compose -f docker-compose.prod.yml ps -q 2>/dev/null) \
+                     | xargs -r docker inspect --format '{{.Image}}' 2>/dev/null | sort -u )
+          {
+            echo "### Artefakt-Verify"
+            echo "- Erwartet (gebaut): \`$IMG\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if printf '%s\n' "$running" | grep -q "$expected"; then
+            echo "- ✅ laufender Container fährt das frisch gebaute Image" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning title=Artefakt-Verify::STALE — laufender Container ist NICHT $TAG. Deploy meldete success, aber das neue Image läuft nicht. Host prüfen: IMAGE_TAG in <app_path>/.env + 'docker compose up -d --force-recreate'."
+            echo "- ⚠️ **STALE**: laufendes Image ≠ \`$TAG\` (grün-aber-nicht-live)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
+
       - name: Deploy to production (SSH — remote runner)
         if: startsWith(inputs.runs_on, 'ubuntu')
         uses: appleboy/ssh-action@v1.2.5
