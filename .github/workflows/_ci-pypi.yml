@@ -313,3 +313,30 @@ jobs:
         run: |
           pip install -q bandit
           bandit ${{ inputs.bandit_args }}
+
+  # ── Aggregat-Gate ─────────────────────────────────────────────────────────
+  # _ci-python.yml hat diesen Job seit v1.0.5 (Branch-Protection-Contexts
+  # zeigen stabil auf "<caller-job> / gate" statt auf Matrix-Jobnamen, die
+  # bei Caller-seitigen python_versions-Änderungen brechen). _ci-pypi.yml
+  # hatte ihn nicht — Nachtrag (platform#811 Wave-3-Konvergenz, Phase 2:
+  # blockierte gaeb-toolkit/outlinefw/promptfw/riskfw/weltenfw strukturell).
+  # skipped zählt als ok (opt-in-Jobs wie mypy/bandit/security laufen nur
+  # wenn enable_* gesetzt ist).
+  gate:
+    name: "gate"
+    runs-on: ${{ inputs.runs_on }}
+    needs: [lint, secrets-scan, test, build, mypy, security, bandit]
+    if: always()
+    steps:
+      - name: "All CI jobs passed or skipped"
+        run: |
+          STATUS_LIST='${{ toJSON(needs) }}'
+          echo "$STATUS_LIST" | python3 -c "
+          import json, sys
+          needs = json.load(sys.stdin)
+          failures = [name for name, job in needs.items() if job['result'] not in ('success', 'skipped')]
+          if failures:
+              print('::error::Failed or cancelled jobs:', failures)
+              sys.exit(1)
+          print('All jobs passed or were skipped.')
+          "
