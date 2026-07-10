@@ -255,7 +255,7 @@ jobs:
       # removed service / wrong image path / outdated port mapping).
       - name: Sync docker-compose.staging.yml to host
         if: hashFiles('docker-compose.staging.yml') != ''
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
@@ -364,7 +364,7 @@ jobs:
 
       - name: Sync compose + manifest to host (remote runner)
         if: startsWith(inputs.runs_on, 'ubuntu')
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
