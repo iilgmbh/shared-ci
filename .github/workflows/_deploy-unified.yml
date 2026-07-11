@@ -335,14 +335,26 @@ jobs:
           echo "compose_sha=${COMPOSE_SHA}" >> "$GITHUB_OUTPUT"
           echo "✅ compose sha256: ${COMPOSE_SHA}"
 
+          # platform#1063 — docker-compose.override.yml ist Teil des deklarierten
+          # Stacks: mitsyncen + override_sha ins Manifest, sonst löscht
+          # `up --remove-orphans` deren Container als Waisen (Realfall
+          # weltenhub 2026-07-10: db+redis entfernt, Login-Ausfall ~15 min).
+          # deploy.sh verifiziert override_sha fail-closed analog §2.17.
+          OVERRIDE_SHA=""
+          if [ -f docker-compose.override.yml ]; then
+            OVERRIDE_SHA=$(sha256sum docker-compose.override.yml | awk '{print $1}')
+            echo "✅ override sha256: ${OVERRIDE_SHA}"
+          fi
+
           # write intent manifest (§2.20)
           cat > .deploy-manifest.json <<JSON
           {
-            "app":         "${{ inputs.app_name }}",
-            "commit":      "${{ github.sha }}",
-            "run_id":      "${{ github.run_id }}",
-            "compose_sha": "${COMPOSE_SHA}",
-            "written_at":  "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            "app":          "${{ inputs.app_name }}",
+            "commit":       "${{ github.sha }}",
+            "run_id":       "${{ github.run_id }}",
+            "compose_sha":  "${COMPOSE_SHA}",
+            "override_sha": "${OVERRIDE_SHA}",
+            "written_at":   "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           }
           JSON
 
@@ -358,6 +370,17 @@ jobs:
               exit 1
             fi
             mv -f "$TMP" "${{ inputs.app_path }}/docker-compose.prod.yml"
+            if [ -n "$OVERRIDE_SHA" ]; then
+              OTMP="${{ inputs.app_path }}/docker-compose.override.yml.tmp$$"
+              cp docker-compose.override.yml "$OTMP"
+              OCOPY_SHA=$(sha256sum "$OTMP" | awk '{print $1}')
+              if [ "$OCOPY_SHA" != "$OVERRIDE_SHA" ]; then
+                rm -f "$OTMP"
+                echo "::error::override sha256 mismatch after copy (corrupt transfer)"
+                exit 1
+              fi
+              mv -f "$OTMP" "${{ inputs.app_path }}/docker-compose.override.yml"
+            fi
             cp .deploy-manifest.json "${{ inputs.app_path }}/.deploy-manifest.json"
             echo "✅ atomic sync complete (self-hosted)"
           fi
@@ -371,6 +394,21 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           fingerprint: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
           source: "docker-compose.prod.yml,.deploy-manifest.json"
+          target: "${{ inputs.app_path }}/"
+          overwrite: true
+
+      # platform#1063 — Override separat syncen (eigener Step: scp-action
+      # schlägt bei fehlender Datei in der source-Liste fehl; hashFiles-Guard
+      # überspringt Repos ohne Override sauber).
+      - name: Sync compose override to host (remote runner)
+        if: startsWith(inputs.runs_on, 'ubuntu') && hashFiles('docker-compose.override.yml') != ''
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          fingerprint: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
+          source: "docker-compose.override.yml"
           target: "${{ inputs.app_path }}/"
           overwrite: true
 
