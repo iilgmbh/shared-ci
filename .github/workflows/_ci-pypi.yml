@@ -313,3 +313,28 @@ jobs:
         run: |
           pip install -q bandit
           bandit ${{ inputs.bandit_args }}
+
+  gate:
+    # Portiert 1:1 aus platform/_ci-pypi.yml (Job-Katalog-Diff verifiziert,
+    # KONZ-018 W1-1): identischer Katalog lint/secrets-scan/test/build/mypy/
+    # security/bandit, keine zusätzlichen if:-Bedingungen außer den bereits
+    # hier vorhandenen enable_*-Opt-ins (build/mypy/security/bandit) — 'skipped'
+    # zählt wie im Original als Pass. Schließt die Gate-Regression, die shared-ci
+    # gegenüber platform hatte (promptfw konsumierte die ungegatete Variante).
+    name: "gate"
+    runs-on: ${{ inputs.runs_on }}
+    needs: [lint, secrets-scan, test, build, mypy, security, bandit]
+    if: always()
+    steps:
+      - name: "All CI jobs passed or skipped"
+        run: |
+          STATUS_LIST='${{ toJSON(needs) }}'
+          echo "$STATUS_LIST" | python3 -c "
+          import json, sys
+          needs = json.load(sys.stdin)
+          failures = [name for name, job in needs.items() if job['result'] not in ('success', 'skipped')]
+          if failures:
+              print('::error::Failed or cancelled jobs:', failures)
+              sys.exit(1)
+          print('All jobs passed or were skipped.')
+          "
