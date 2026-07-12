@@ -56,9 +56,14 @@ on:
         default: '>=0.7.0'
         type: string
       pytest_workers:
-        description: 'Number of parallel pytest workers (default: auto)'
+        # 'auto' = 1 Worker/Core = 12 auf dem geteilten Runner-Host (12 Cores,
+        # 22GB, 25 Repo-Runner) — crashte reproduzierbar mit memcg-OOM
+        # ('node down: Not properly terminated'): weltenhub 2026-07-10 (2×),
+        # cad-hub Run 29101278323. '4' ist der host-verträgliche Default;
+        # Repos auf dediziertem Runner können weiterhin explizit 'auto' setzen.
+        description: 'Number of parallel pytest workers (default: 4 — host-safe on shared runners)'
         required: false
-        default: 'auto'
+        default: '4'
         type: string
       run_migrations:
         description: 'Run unit tests WITH migrations (drop --no-migrations). Required for django-tenants repos — Tenant-Schema-Tabellen entstehen nur per migrate_schemas.'
