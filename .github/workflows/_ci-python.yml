@@ -146,6 +146,17 @@ jobs:
         run: ruff check . --output-format=github
       - name: Ruff format check
         run: ruff format --check .
+      - name: Legacy-Stub-Dist-Warnung (KONZ-018 W0-2, non-blocking)
+        # Das PyPI-Paket `aifw` ist ein STALE-STUB (0.5.0) — echte Dist ist
+        # `iil-aifw` (Warnung: install-iil-packages action.yml). Repos, die den
+        # Legacy-Namen pinnen, laufen auf ~8 Monate altem Framework-Stand
+        # (Kohorte 2026-07-12: cad-hub, 137-hub, trading-hub). Warn-only;
+        # blocking erst nach 2 Wochen ohne False-Positive (Konzept-Gate).
+        run: |
+          hits=$(grep -rnE '^\s*aifw\s*[><=]' --include='requirements*.txt' --include='pyproject.toml' . 2>/dev/null || true)
+          if [ -n "$hits" ]; then
+            echo "::warning title=Legacy-Stub-Dist 'aifw' gepinnt::Das PyPI-Paket 'aifw' ist ein veralteter Stub (0.5.0) — auf 'iil-aifw>=0.11.4,<1' migrieren (KONZ-platform-018 W0-1). Fundstellen: $hits"
+          fi
 
   secrets-scan:
     name: "Secret Detection (gitleaks)"
