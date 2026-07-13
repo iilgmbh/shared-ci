@@ -222,7 +222,24 @@ jobs:
           IMG="ghcr.io/${{ env.IMAGE_NAME }}:${{ needs.resolve.outputs.image_tag }}"
           echo "::group::Import smoke on $IMG"
           echo "cmd: $SMOKE_CMD"
-          docker pull "$IMG"
+          # GHCR-Eventual-Consistency: ein frisch gepushtes Manifest ist beim
+          # unmittelbar folgenden Pull-Read gelegentlich noch nicht propagiert
+          # (403 Forbidden auf HEAD-Request, kein Auth-Problem — Login+Push
+          # direkt zuvor waren erfolgreich). Beobachtet trading-hub run
+          # 29199496857 (2026-07-12) + 28871146456 (2026-07-07), im nächsten
+          # Lauf jeweils grün ohne Codeänderung. Retry statt Job-Fail.
+          # `if`-Guard statt `&&`: GH-Actions-run-Steps laufen mit `bash -e` —
+          # ein `docker pull "$IMG" && break`, das beim ersten Versuch
+          # fehlschlägt, würde die Schleife durch errexit sofort abbrechen
+          # (der && -Ausdruck liefert selbst den Fehlercode zurück). `if` ist
+          # von errexit ausgenommen, daher kommt die Schleife wirklich zum
+          # nächsten Versuch. Bleiben alle 5 Versuche rot, pullt der folgende
+          # `docker run` implizit nach und schlägt dann korrekt (mit -e) fehl.
+          for i in 1 2 3 4 5; do
+            if docker pull "$IMG"; then break; fi
+            echo "pull attempt $i/5 failed, retrying in $((i*3))s..."
+            sleep $((i*3))
+          done
           # --entrypoint sh: das App-Entrypoint (z.B. /entrypoint.sh mit
           # "DJANGO_SETTINGS_MODULE must be set"-Guard) überspringen — die Smoke
           # testet den IMPORT-Graph, nicht das Entrypoint. Env setzt der Consumer
