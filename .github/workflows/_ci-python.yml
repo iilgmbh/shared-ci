@@ -105,6 +105,10 @@ on:
         required: false
         default: false
         type: boolean
+    secrets:
+      PROJECT_PAT:
+        description: 'PAT for private git+https dependencies (pip install / pip-audit). Cross-org consumers (repo outside iilgmbh) MUST pass this explicitly — secrets: inherit does not deliver caller secrets across orgs (achimdehnert/platform#1158; same class as the deploy-job fix, platform#1067). Declaring it here is the prerequisite for explicit mapping; callers using secrets: inherit are unaffected.'
+        required: false
 
 jobs:
   qm-gate:
