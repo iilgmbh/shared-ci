@@ -81,6 +81,11 @@ on:
         required: false
         default: ''
         type: string
+      skip_external_verify:
+        description: 'Skip the external belt+suspenders health check in the verify job (e.g. health_url sits behind an auth gate like Cloudflare Access and can structurally never return 200 from a GitHub-hosted runner). The internal healthcheck with rollback in deploy-remote.sh still runs and still gates the deploy — this only silences the separate, non-blocking external probe.'
+        required: false
+        default: false
+        type: boolean
     secrets:
       HETZNER_HOST:
         required: true
@@ -322,6 +327,11 @@ jobs:
       - name: External health check
         id: health
         run: |
+          if [ "${{ inputs.skip_external_verify }}" = "true" ]; then
+            echo "ℹ️ External health check skipped (skip_external_verify=true) — internal healthcheck with rollback already ran and gated the deploy job."
+            echo "healthy=skipped" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           for i in $(seq 1 5); do
             HTTP_CODE=$(curl -sf -o /dev/null -w '%{http_code}' \
               "${{ inputs.health_url }}" 2>/dev/null || echo "000")
