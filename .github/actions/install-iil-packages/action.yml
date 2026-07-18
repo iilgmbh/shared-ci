@@ -190,6 +190,79 @@ runs:
           pip install "git+https://github.com/achimdehnert/iil-fieldprefill.git" 2>/dev/null || true
         fi
 
+    - name: Freshness probe — generic, pyproject-declared (platform:KONZ-018 W1-3)
+      shell: bash
+      # Generalizes the aifw-specific probe above (which stays untouched until
+      # this pilot is green — KONZ-018 W1-3): each opted-in package declares its
+      # stable top-level API itself in its own pyproject.toml under
+      # [tool.iil-fleet] (freshness_min_version + freshness_symbols). This step
+      # fetches that declaration from the package repo's main branch and fails
+      # LOUD when an installed release >= freshness_min_version does not export
+      # every declared symbol (stale tool-cache code class, see platform#419).
+      # Safety rails (KONZ-018 R3 — no false-positive red for consumers):
+      #   - packages without a [tool.iil-fleet] declaration are skipped (the
+      #     probe is inert until the package-side PR lands on main),
+      #   - installed releases OLDER than freshness_min_version are skipped
+      #     (main may declare symbols newer than the installed wheel),
+      #   - network/parse/dependency problems are ::warning + skip, never red.
+      # Pilot roster: iil-promptfw only (2nd-largest package, ~14 consumers).
+      run: |
+        python - <<'GENPROBE'
+        import importlib
+        import importlib.metadata as M
+        import importlib.util as u
+        import sys
+        import urllib.request
+
+        try:
+            import tomllib
+        except ImportError:  # python < 3.11 — declaration unreadable, advisory
+            print("::warning::tomllib unavailable (python < 3.11) — generic freshness probe skipped")
+            sys.exit(0)
+        from packaging.version import Version
+
+        # dist, module, legacy dist name (fallback install path above), repo
+        PILOTS = [
+            ("iil-promptfw", "promptfw", "promptfw", "achimdehnert/promptfw"),
+        ]
+        failed = False
+        for dist, module, legacy, repo in PILOTS:
+            if u.find_spec(module) is None:
+                continue  # consumer does not use this package
+            try:
+                meta = M.version(dist)
+            except M.PackageNotFoundError:
+                try:
+                    meta = M.version(legacy)
+                except M.PackageNotFoundError:
+                    print("::warning::%s importable but no %s/%s dist metadata — freshness probe skipped" % (module, dist, legacy))
+                    continue
+            url = "https://raw.githubusercontent.com/%s/main/pyproject.toml" % repo
+            try:
+                with urllib.request.urlopen(url, timeout=10) as r:
+                    fleet = tomllib.loads(r.read().decode()).get("tool", {}).get("iil-fleet") or {}
+            except Exception as e:
+                print("::warning::freshness declaration for %s not fetchable/parsable (%s) — probe skipped (advisory)" % (dist, e))
+                continue
+            symbols = fleet.get("freshness_symbols") or []
+            min_v = fleet.get("freshness_min_version")
+            if not symbols or not min_v:
+                continue  # package not opted in (yet)
+            if Version(meta) < Version(str(min_v)):
+                continue  # installed release predates the declaration
+            try:
+                mod = importlib.import_module(module)
+            except ModuleNotFoundError as e:
+                print("::warning::%s present but a dependency is missing (%s) — freshness probe skipped" % (module, e.name))
+                continue
+            missing = [s for s in symbols if not hasattr(mod, s)]
+            print("%s metadata=%s code=%s @ %s — %d declared symbols" % (dist, meta, getattr(mod, "__version__", "?"), mod.__file__, len(symbols)))
+            if missing:
+                print("::error::%s %s installed but code is STALE — missing %s (tool-cache not repaired by force-reinstall)" % (dist, meta, missing))
+                failed = True
+        sys.exit(1 if failed else 0)
+        GENPROBE
+
     - name: Install platform-context[testing] (ADR-058)
       # PyPI-Naming: das echte Paket heißt `iil-platform-context`.
       # `platform-context` (ohne iil-Präfix) ist auf PyPI ein fremder Squatter
