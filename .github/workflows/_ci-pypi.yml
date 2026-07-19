@@ -314,6 +314,66 @@ jobs:
           pip install -q bandit
           bandit ${{ inputs.bandit_args }}
 
+  publish-auth-guard:
+    # ADR-278: iil-Pakete publizieren ausschliesslich via OIDC Trusted Publishing.
+    # Warn-first (ADR-209): continue-on-error + NICHT in gate.needs -> blockiert (noch)
+    # nicht. Scharfschalten (block): continue-on-error entfernen UND diesen Job in
+    # gate.needs aufnehmen. Kanonische Check-Quelle: platform/tools/check_publish_oidc_auth.py.
+    name: "Publish-Auth Guard (ADR-278, warn)"
+    runs-on: ${{ inputs.runs_on }}
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version }}
+      - name: PyPI-Publish muss OIDC sein (kein password-Input)
+        shell: bash
+        run: |
+          pip install -q pyyaml
+          python3 - <<'PY'
+          import glob, sys, yaml
+          PYPA = "pypa/gh-action-pypi-publish"
+          def is_test(w):
+              url = str(w.get("repository-url") or w.get("repository_url") or "")
+              return "test.pypi.org" in url
+          files = sorted(set(glob.glob(".github/workflows/*publish*.yml")
+                             + glob.glob(".github/workflows/*publish*.yaml")))
+          if not files:
+              print("Keine publish-Workflows gefunden - ok.")
+              sys.exit(0)
+          viol = []
+          for f in files:
+              try:
+                  doc = yaml.safe_load(open(f, encoding="utf-8"))
+              except Exception as e:
+                  viol.append(f"{f}: YAML nicht parsebar ({e})")
+                  continue
+              if not isinstance(doc, dict):
+                  continue
+              for jn, job in (doc.get("jobs") or {}).items():
+                  if not isinstance(job, dict):
+                      continue
+                  for st in job.get("steps") or []:
+                      if not isinstance(st, dict):
+                          continue
+                      if PYPA not in str(st.get("uses") or ""):
+                          continue
+                      w = st.get("with") or {}
+                      if isinstance(w, dict) and "password" in w and not is_test(w):
+                          nm = st.get("name") or PYPA
+                          viol.append(f"{f}: Job '{jn}' Step '{nm}' nutzt password-Input "
+                                      f"im PyPI-Upload -> OIDC deaktiviert (ADR-278).")
+          if viol:
+              print("::warning::ADR-278: token-basiertes PyPI-Publishing gefunden:")
+              for v in viol:
+                  print("  -", v)
+              sys.exit(1)
+          print(f"OK ADR-278: {len(files)} publish-Workflow(s) sind OIDC-only.")
+          PY
+
   gate:
     # Portiert 1:1 aus platform/_ci-pypi.yml (Job-Katalog-Diff verifiziert,
     # KONZ-018 W1-1): identischer Katalog lint/secrets-scan/test/build/mypy/
