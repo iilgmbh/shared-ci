@@ -316,12 +316,12 @@ jobs:
 
   publish-auth-guard:
     # ADR-278: iil-Pakete publizieren ausschliesslich via OIDC Trusted Publishing.
-    # Warn-first (ADR-209): continue-on-error + NICHT in gate.needs -> blockiert (noch)
-    # nicht. Scharfschalten (block): continue-on-error entfernen UND diesen Job in
-    # gate.needs aufnehmen. Kanonische Check-Quelle: platform/tools/check_publish_oidc_auth.py.
-    name: "Publish-Auth Guard (ADR-278, warn)"
+    # SCHARF/block (2026-07-19): kein continue-on-error + in gate.needs -> ein
+    # password-Input im PyPI-Upload-Step laesst ci/gate rot werden.
+    # Vorab verifiziert: alle _ci-pypi-Consumer sind guard-safe (kein PyPI-password).
+    # Kanonische Check-Quelle: platform/tools/check_publish_oidc_auth.py.
+    name: "Publish-Auth Guard (ADR-278)"
     runs-on: ${{ inputs.runs_on }}
-    continue-on-error: true
     permissions:
       contents: read
     steps:
@@ -383,7 +383,7 @@ jobs:
     # gegenüber platform hatte (promptfw konsumierte die ungegatete Variante).
     name: "gate"
     runs-on: ${{ inputs.runs_on }}
-    needs: [lint, secrets-scan, test, build, mypy, security, bandit]
+    needs: [lint, secrets-scan, test, build, mypy, security, bandit, publish-auth-guard]
     if: always()
     steps:
       - name: "All CI jobs passed or skipped"
