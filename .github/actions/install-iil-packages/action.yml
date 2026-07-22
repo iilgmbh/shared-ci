@@ -134,8 +134,17 @@ runs:
         # consumer without it). The litellm guard above stays (import-time dep with
         # version bound); THIS catches every future "requires X, which is not
         # installed" generically, so new aifw deps never need another hardcode.
+        # `|| true` ist NICHT kosmetisch: der Step laeuft unter `-e -o pipefail`
+        # (GitHub-Default fuer `shell: bash`, im Runner-Log als
+        # `bash --noprofile --norc -e -o pipefail {0}` sichtbar). `pip check`
+        # beendet mit 1, sobald eine Abhaengigkeit fehlt; pipefail reicht die 1
+        # durch die Pipe, die Zuweisung erbt sie, set -e beendet den Step SOFORT.
+        # Ohne `|| true` war dieser Block damit unerreichbar: bei kaputten Deps
+        # starb das Skript eine Zeile vorher, bei heilen Deps war MISSING leer.
+        # Er lief also in genau keinem Fall — belegt an wedding-hub#38
+        # (iil-aifw 0.11.5 requires tenacity>=8.2, Abbruch ohne jede Ausgabe).
         MISSING=$(python -m pip check 2>&1 \
-          | sed -n 's/.*requires \(.*\), which is not installed.*/\1/p' | sort -u)
+          | sed -n 's/.*requires \(.*\), which is not installed.*/\1/p' | sort -u) || true
         if [ -n "$MISSING" ]; then
           echo "::notice::repairing deps dropped by --no-deps refresh: $MISSING"
           printf '%s\n' "$MISSING" | xargs -r -n1 python -m pip install -q \
