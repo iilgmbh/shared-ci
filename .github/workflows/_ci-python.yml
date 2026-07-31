@@ -221,16 +221,45 @@ jobs:
           else
             echo "ℹ️  Kein PROJECT_PAT — private git-Deps werden ggf. nicht aufgelöst"
           fi
+      - name: Frisches venv — der Scan darf kein Runner-Residuum messen
+        run: |
+          # `setup-python` legt auf self-hosted Runnern ein PERSISTENTES
+          # Tool-Verzeichnis an (_work/_tool/Python/<ver>/x64). Jedes
+          # `pip install` eines früheren Laufs bleibt darin liegen; pip
+          # aktualisiert nur, was ein Lauf ausdrücklich anfordert. Über
+          # Wochen wächst dort eine Umgebung, die in KEINER requirements.txt
+          # steht — und genau die misst `pip check`, denn es prüft die
+          # installierte Umgebung, nicht die Datei.
+          #
+          # Realfall mcp-hub#189: click 8.4.1 (alt liegengeblieben) neben
+          # huggingface-hub 1.25.1 (das click>=8.4.2 verlangt) — 178 Pakete
+          # Residuum, beide Namen in keiner Anforderungsdatei des Repos.
+          # Der Job war dauerhaft rot und durch KEINE Repo-Änderung heilbar.
+          # Ein venv je Job beendet die Klasse, nicht nur den Fall.
+          python -m venv "${RUNNER_TEMP}/ci-security-venv"
+          echo "${RUNNER_TEMP}/ci-security-venv/bin" >> "$GITHUB_PATH"
+          echo "✅ venv aktiv: ${RUNNER_TEMP}/ci-security-venv"
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip -q
           pip install pip-audit
           if [ -f "${{ inputs.requirements_file }}" ]; then
             pip install -r ${{ inputs.requirements_file }} -q
           fi
       - name: pip check — Dependency-Konflikte
         run: |
-          pip check && echo "✅ Keine Dependency-Konflikte" || {
-            echo "❌ Dependency-Konflikte gefunden — bitte requirements.txt prüfen"
+          if [ ! -f "${{ inputs.requirements_file }}" ]; then
+            # Kein Hard-Fail, aber auch kein grünes Häkchen: ein ✅ hier würde
+            # Abdeckung vortäuschen, die es nicht gibt (Polyrepo-Monorepos
+            # ohne Root-Anforderungsdatei, z.B. mcp-hub).
+            echo "⚠️  Kein ${{ inputs.requirements_file }} — es wurden KEINE Repo-Deps geprüft."
+            echo "    Der Job sagt hier nichts über die Abhängigkeiten dieses Repos aus."
+            exit 0
+          fi
+          pip check && echo "✅ Keine Dependency-Konflikte in ${{ inputs.requirements_file }}" || {
+            echo "❌ Dependency-Konflikte zwischen den installierten Deps dieses Repos."
+            echo "   Geprüft wurde ein FRISCHES venv — die Konflikte stammen also aus"
+            echo "   ${{ inputs.requirements_file }} bzw. deren Transitiv-Deps, nicht vom Runner."
             exit 1
           }
       - name: pip-audit — CVE-Scan
