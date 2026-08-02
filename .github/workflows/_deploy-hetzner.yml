@@ -2,6 +2,15 @@
 # ║  REUSABLE WORKFLOW: Hetzner VM Deployment (v2)                             ║
 # ║  Uses deploy-remote.sh on VM — migration gate, healthcheck, auto-rollback ║
 # ║  Usage: uses: iilgmbh/shared-ci/.github/workflows/_deploy-hetzner.yml@main
+# ║                                                                              ║
+# ║  Caller needs `permissions: { contents: read, packages: read }` — the      ║
+# ║  `deploy` job forwards `github.token` to the remote host as GHCR_TOKEN for ║
+# ║  `docker login`/`compose pull` of the app image (packages: read). Callers  ║
+# ║  granting only `contents: read` will see GHCR pulls fail on private        ║
+# ║  images. Deliberately NO job-level `permissions:` block here: a called     ║
+# ║  reusable workflow can only NARROW the caller's GITHUB_TOKEN, never grant  ║
+# ║  (see #191/#198) — adding `{contents: read}` here would silently drop the  ║
+# ║  packages scope for every caller and break GHCR auth fleet-wide.           ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
 name: Deploy to Hetzner
@@ -81,11 +90,6 @@ on:
         required: false
         default: ''
         type: string
-      skip_external_verify:
-        description: 'Skip the external belt+suspenders health check in the verify job (e.g. health_url sits behind an auth gate like Cloudflare Access and can structurally never return 200 from a GitHub-hosted runner). The internal healthcheck with rollback in deploy-remote.sh still runs and still gates the deploy — this only silences the separate, non-blocking external probe.'
-        required: false
-        default: false
-        type: boolean
     secrets:
       HETZNER_HOST:
         required: true
@@ -109,7 +113,7 @@ jobs:
     name: "Decrypt & push secrets"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Check SOPS_AGE_KEY available
         id: sops_check
@@ -203,7 +207,7 @@ jobs:
       deployed_tag: ${{ steps.tag.outputs.tag }}
       exit_code: ${{ steps.run.outputs.exit_code }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Pre-flight lint (ADR-054 M1)
         run: |
@@ -250,7 +254,7 @@ jobs:
           fi
 
       - name: Sync deploy script to VM
-        uses: appleboy/scp-action@v1.0.0
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
           host: ${{ secrets.HETZNER_HOST }}
           username: ${{ secrets.HETZNER_USER }}
@@ -261,7 +265,7 @@ jobs:
 
       - name: Execute deploy
         id: run
-        uses: appleboy/ssh-action@v1.2.5
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         env:
           GHCR_TOKEN: ${{ github.token }}
           PROJECT_PAT: ${{ secrets.PROJECT_PAT }}
@@ -290,6 +294,14 @@ jobs:
               else
                 echo "GITHUB_TOKEN=${PROJECT_PAT}" >> "$ENV_FILE"
               fi
+            fi
+
+            # GHCR-Login auf dem Host, damit `compose pull` authentifiziert ist.
+            # GHCR_TOKEN ist via envs: in dieser SSH-Session; die deploy-remote.sh-
+            # Kopien machen selbst keinen Login → ohne dies trifft der pull einen
+            # unauthentifizierten Daemon → "denied" (Fleet-Bug, 11 vendored Kopien).
+            if [ -n "${GHCR_TOKEN:-}" ]; then
+              echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             fi
 
             EXTRA_ARGS="${{ inputs.extra_deploy_args }}"
@@ -327,11 +339,6 @@ jobs:
       - name: External health check
         id: health
         run: |
-          if [ "${{ inputs.skip_external_verify }}" = "true" ]; then
-            echo "ℹ️ External health check skipped (skip_external_verify=true) — internal healthcheck with rollback already ran and gated the deploy job."
-            echo "healthy=skipped" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           for i in $(seq 1 5); do
             HTTP_CODE=$(curl -sf -o /dev/null -w '%{http_code}' \
               "${{ inputs.health_url }}" 2>/dev/null || echo "000")

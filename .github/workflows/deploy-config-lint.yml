@@ -21,14 +21,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout caller repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: caller
       - name: Checkout platform (Lint-Script)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: iilgmbh/shared-ci
           ref: main
-          path: platform
+          path: _shared_ci
       - name: Lint deploy-Workflows gegen Auto-Prod-Default
-        run: python3 platform/tools/deploy_config_lint.py caller/.github/workflows
+        run: python3 _shared_ci/tools/deploy_config_lint.py caller/.github/workflows
