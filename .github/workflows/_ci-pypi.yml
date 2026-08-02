@@ -58,7 +58,15 @@ on:
         default: '==0.15.4'
         type: string
       enable_mypy:
-        description: 'Run mypy (non-blocking)'
+        description: 'Run mypy (non-blocking, außer mypy_blocking=true)'
+        required: false
+        default: false
+        type: boolean
+      mypy_blocking:
+        description: >-
+          mypy als bindendes Gate (Retro e17299 F6: die 2b-Konvergenz ließ
+          blockierendes mypy bei iil-adrfw/outlinefw still entfallen —
+          dieser Input stellt die Parität wieder her).
         required: false
         default: false
         type: boolean
@@ -67,23 +75,26 @@ on:
         required: false
         default: '.'
         type: string
-      mypy_blocking:
-        description: >-
-          mypy als bindendes Gate (Retro e17299 F6: blockierendes mypy darf bei
-          Konvergenz-Migrationen nicht still entfallen). Default false = non-blocking.
-        required: false
-        default: false
-        type: boolean
       enable_bandit:
-        description: 'Run bandit SAST (non-blocking)'
+        description: 'bandit-SAST (advisory, wie Vorgänger-CI iil-adrfw)'
         required: false
         default: false
         type: boolean
       bandit_args:
-        description: 'bandit target/args'
+        description: 'bandit-Argumente'
         required: false
-        default: '-r src/'
+        default: '-r src'
         type: string
+      bandit_blocking:
+        description: >-
+          Make the bandit SAST job blocking — a finding fails CI and the
+          aggregate gate. Default false = advisory (continue-on-error), the
+          historical iil-adrfw behaviour. Mirrors mypy_blocking; opt in once
+          a repo's bandit run is green so a permanently-red advisory check
+          can't hide a real future finding (Retro e17299 F6 / alert-fatigue).
+        required: false
+        default: false
+        type: boolean
       enable_build:
         description: >-
           Build the distribution (python -m build), validate metadata
@@ -121,8 +132,8 @@ jobs:
     name: "Lint & Format"
     runs-on: ${{ inputs.runs_on }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: Install ruff
@@ -150,7 +161,7 @@ jobs:
     # preferred) or `.gitleaks.toml` (rule allowlist), both auto-honored and
     # echoed by the action. Template: platform docs/templates/.gitleaks.toml.
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Secret scan (git history)
@@ -168,8 +179,8 @@ jobs:
       matrix:
         python: ${{ fromJSON(inputs.python_versions) }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - name: Resolve install extra (fail loud on wrong extra name)
@@ -216,8 +227,8 @@ jobs:
     if: ${{ inputs.enable_build }}
     runs-on: ${{ inputs.runs_on }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: Build sdist + wheel
@@ -242,14 +253,13 @@ jobs:
           triage_hint: "A secret is present in the artifact that would be PUBLISHED. ROTATE it and exclude it from the build (MANIFEST.in / package_data / [tool.setuptools] exclude). Do NOT suppress on intent — the artifact must not ship it."
 
   mypy:
-    name: "Type Check (mypy${{ inputs.mypy_blocking && ', blocking' || ', non-blocking' }})"
+    name: "Type Check (mypy)"
     if: ${{ inputs.enable_mypy }}
     runs-on: ${{ inputs.runs_on }}
-    # mypy zählt im gate nur bei mypy_blocking (continue-on-error setzt sonst success)
     continue-on-error: ${{ !inputs.mypy_blocking }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: Resolve install extra
@@ -271,8 +281,8 @@ jobs:
     # whether a CVE is a hard fail; pip check (dependency conflicts in a
     # published package) is always blocking.
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: Resolve install extra
@@ -299,15 +309,19 @@ jobs:
               || echo "⚠️  CVEs found — see output above (non-blocking per caller opt-out)"
           fi
 
+  # ── SAST (bandit) ─────────────────────────────────────────────────────────
+  # Retro e17299 F6: iil-adrfws Vorgänger-CI hatte bandit (advisory); die
+  # 2b-Konvergenz ließ es ersatzlos entfallen. Opt-in-Wiederherstellung.
+  # Advisory by default (continue-on-error); a caller flips bandit_blocking=true
+  # to make findings fail CI + gate, once its bandit run is green.
   bandit:
-    name: "SAST (bandit, non-blocking)"
+    name: "SAST (bandit, ${{ inputs.bandit_blocking && 'blocking' || 'advisory' }})"
     if: ${{ inputs.enable_bandit }}
     runs-on: ${{ inputs.runs_on }}
-    # weich: Job ist ausdruecklich non-blocking (SAST) — Findings sichtbar, Publish haengt nicht daran; gitleaks bleibt hartes Gate.
-    continue-on-error: true
+    continue-on-error: ${{ !inputs.bandit_blocking }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: bandit
@@ -316,18 +330,21 @@ jobs:
           bandit ${{ inputs.bandit_args }}
 
   publish-auth-guard:
-    # ADR-278: iil-Pakete publizieren ausschliesslich via OIDC Trusted Publishing.
-    # SCHARF/block (2026-07-19): kein continue-on-error + in gate.needs -> ein
-    # password-Input im PyPI-Upload-Step laesst ci/gate rot werden.
-    # Vorab verifiziert: alle _ci-pypi-Consumer sind guard-safe (kein PyPI-password).
-    # Kanonische Check-Quelle: platform/tools/check_publish_oidc_auth.py.
+    # ADR-278 (accepted 2026-07-24): iil-Pakete publizieren ausschliesslich via
+    # OIDC Trusted Publishing. SCHARF/block: kein continue-on-error + in
+    # gate.needs -> ein password-Input im PyPI-Upload-Step laesst ci/gate rot
+    # werden. Vorab verifiziert (Blast-Radius-Preflight 2026-07-24): alle 19
+    # _ci-pypi-Consumer sind guard-safe (0 non-TestPyPI-password). Portiert aus
+    # iilgmbh/shared-ci (#33) zur Konvergenz (platform#1423). Kanonische
+    # Check-Quelle: platform/tools/check_publish_oidc_auth.py (Logik hier inline,
+    # damit der Consumer-Checkout sie ohne zusaetzliche Datei ausfuehren kann).
     name: "Publish-Auth Guard (ADR-278)"
     runs-on: ${{ inputs.runs_on }}
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: PyPI-Publish muss OIDC sein (kein password-Input)
@@ -368,20 +385,22 @@ jobs:
                           viol.append(f"{f}: Job '{jn}' Step '{nm}' nutzt password-Input "
                                       f"im PyPI-Upload -> OIDC deaktiviert (ADR-278).")
           if viol:
-              print("::warning::ADR-278: token-basiertes PyPI-Publishing gefunden:")
+              print("::error::ADR-278: token-basiertes PyPI-Publishing gefunden:")
               for v in viol:
                   print("  -", v)
               sys.exit(1)
           print(f"OK ADR-278: {len(files)} publish-Workflow(s) sind OIDC-only.")
           PY
 
+  # ── Aggregat-Gate ─────────────────────────────────────────────────────────
+  # Retro e17299 F5: Branch-Protections banden Matrix-Jobnamen (inkl.
+  # Python-Version) in den Vertrag — ändert der Caller python_versions,
+  # blockt main dauerhaft. Muster aus _ci-python.yml:gate übernommen:
+  # Protections zeigen NUR auf "<caller-job> / gate" (stabil, matrix-frei).
+  # skipped zählt als ok (opt-in-Jobs); mypy/bandit zählen nur bei
+  # mypy_blocking/bandit_blocking, weil continue-on-error=true das Ergebnis
+  # sonst ohnehin auf success setzt.
   gate:
-    # Portiert 1:1 aus platform/_ci-pypi.yml (Job-Katalog-Diff verifiziert,
-    # KONZ-018 W1-1): identischer Katalog lint/secrets-scan/test/build/mypy/
-    # security/bandit, keine zusätzlichen if:-Bedingungen außer den bereits
-    # hier vorhandenen enable_*-Opt-ins (build/mypy/security/bandit) — 'skipped'
-    # zählt wie im Original als Pass. Schließt die Gate-Regression, die shared-ci
-    # gegenüber platform hatte (promptfw konsumierte die ungegatete Variante).
     name: "gate"
     runs-on: ${{ inputs.runs_on }}
     needs: [lint, secrets-scan, test, build, mypy, security, bandit, publish-auth-guard]
