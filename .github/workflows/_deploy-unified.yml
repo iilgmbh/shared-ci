@@ -367,6 +367,13 @@ jobs:
       - name: Deploy to production (direct — self-hosted runner)
         if: ${{ !startsWith(inputs.runs_on, 'ubuntu') }}
         timeout-minutes: 15
+        env:
+          # Kurzlebiger Workflow-Token → deploy.sh loggt frisch bei GHCR ein.
+          # v1.1.1 hatte das NUR in die SSH-Schritte gepatcht — self-hosted Runner
+          # nehmen aber DIESEN Direktpfad (Realfall: Probe-Deploy 30765328996 rot,
+          # weil deploy.sh ohne GHCR_TOKEN auf die veraltete Host-Datei zurückfiel).
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         run: |
           set -euo pipefail
           /opt/scripts/deploy.sh \
