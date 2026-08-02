@@ -1,0 +1,97 @@
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  WORKFLOW VALIDATION: Validates reusable workflows before merge           ║
+# ║  Prevents broken workflows from affecting all downstream apps             ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+
+name: Validate Workflows
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/_*.yml'
+      - '.github/workflows/*.yml'
+      - '.github/actions/**'
+      - 'scripts/checks/publish_gate_invariant.sh'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/_*.yml'
+      - '.github/workflows/*.yml'
+      - '.github/actions/**'
+      - 'scripts/checks/publish_gate_invariant.sh'
+      - '.github/actionlint.yaml'
+
+# Workflow-level default (least privilege, #818 permissions sweep) —
+# no job in this workflow needs to write via GITHUB_TOKEN.
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: "Validate Syntax"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install validation tools
+        run: |
+          pip install yamllint
+          # Install actionlint
+          bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+
+      - name: YAML Lint
+        run: |
+          yamllint -d "{extends: relaxed, rules: {line-length: {max: 200}}}" \
+            .github/workflows/*.yml
+
+      - name: Action Lint
+        run: |
+          ./actionlint \
+            -config-file .github/actionlint.yaml \
+            -ignore "shellcheck reported issue" \
+            .github/workflows/*.yml
+
+      - name: Validate reusable workflow structure
+        run: |
+          echo "Checking reusable workflows..."
+          for file in .github/workflows/_*.yml; do
+            if [ -f "$file" ]; then
+              echo "Validating $file..."
+
+              # Check for required 'on: workflow_call'
+              if ! grep -q "workflow_call" "$file"; then
+                echo "::error file=$file::Missing 'on: workflow_call' trigger"
+                exit 1
+              fi
+
+              # Check for documented inputs
+              if grep -q "inputs:" "$file"; then
+                echo "  ✅ Has inputs defined"
+              fi
+
+              # Check for outputs (optional but recommended)
+              if grep -q "outputs:" "$file"; then
+                echo "  ✅ Has outputs defined"
+              fi
+            fi
+          done
+          echo "✅ All reusable workflows valid"
+
+      - name: ADR-226 publish-gate invariant + #191/#198 API-free guard
+        run: bash scripts/checks/publish_gate_invariant.sh
+
+  # test-ci entfernt (#1423): der Job war an `_ci-python.yml` gebunden, das mit
+  # diesem PR retired wurde (0 echte Consumer org-weit, SSoT ist iilgmbh/shared-ci).
+  #
+  # test-build + test-deploy entfernt (#1438): beide standen auf
+  #   if: contains(github.event.pull_request.changed_files, '<datei>.yml')
+  # `github.event.pull_request.changed_files` ist im Webhook-Payload ein Integer
+  # (Anzahl geaenderter Dateien), keine Liste — `contains(<int>, <string>)` kann
+  # nie wahr werden. Beide Jobs waren damit seit ihrer Einfuehrung tot und sind in
+  # jedem PR als "skipping" gelaufen. Ersatzlos entfernt statt repariert, weil ihr
+  # Inhalt ausschliesslich `echo` war: test-build gab zwei Zeilen aus, test-deploy
+  # grepte nach zwei Secret-Namen, ohne bei Fehlen den Job rot zu machen. Ein
+  # korrekter paths-filter haette also nur zwei immer-gruene Checks wiederbelebt.
+  # Der Syntax-/Struktur-Check der Reusables liegt im `validate`-Job oben.
+  # Keiner der beiden war Required Check (Ruleset `main-required-checks` verlangt
+  # guardian, gitleaks secret scan, pytest tools/tests/ — API-geprueft 2026-07-25).
