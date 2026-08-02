@@ -303,6 +303,7 @@ jobs:
     name: "SAST (bandit, non-blocking)"
     if: ${{ inputs.enable_bandit }}
     runs-on: ${{ inputs.runs_on }}
+    # weich: Job ist ausdruecklich non-blocking (SAST) — Findings sichtbar, Publish haengt nicht daran; gitleaks bleibt hartes Gate.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
