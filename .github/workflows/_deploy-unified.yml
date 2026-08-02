@@ -77,16 +77,6 @@ on:
         required: false
         type: string
         default: ""
-      ghcr_push_token:
-        description: >-
-          Welcher Token den GHCR-Build-PUSH-Login macht: 'github_token' (Default, unverändert)
-          ODER 'project_pat'. Opt-in auf 'project_pat' NUR für Repos, deren GHCR-Package der
-          Repo-GITHUB_TOKEN nicht beschreiben darf (403 Forbidden trotz packages:write, z.B.
-          user-eigenes Package ohne Repo-Write-Rolle, shared-ci#10 Facette B). Voraussetzung:
-          secrets.PROJECT_PAT trägt write:packages. Andere Konsumenten unberührt.
-        required: false
-        type: string
-        default: "github_token"
     secrets:
       DEPLOY_SSH_KEY:
         description: "SSH Key für Production (vorhandener Secret-Name)"
@@ -185,11 +175,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          # shared-ci#10 Facette B: opt-in PROJECT_PAT für den Build-PUSH. Default bleibt
-          # GITHUB_TOKEN. Greift nur, wenn ghcr_push_token='project_pat' UND PROJECT_PAT
-          # gesetzt ist — sonst Rückfall auf GITHUB_TOKEN, damit ein leeres PAT oder ein
-          # Konsument ohne das Secret nicht bricht.
-          password: ${{ (inputs.ghcr_push_token == 'project_pat' && secrets.PROJECT_PAT) || secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
