@@ -703,6 +703,21 @@ jobs:
     needs: [qm-gate, lint, secrets-scan, security, test-unit, test-integration, coverage-report, test-contract, architecture-guardian, runner-label-check, migrations-smoke]
     if: always()
     steps:
+      # Warn-first-Stufe (shared-ci#40, platform#1775): skip_tests:true auf dem
+      # Default-Branch macht ci/gate gruen OHNE Testaussage — 5 Consumer trugen
+      # so monatelang rote Suiten unsichtbar. Dieser Step warnt nur (Annotation
+      # + Summary) und kann nie fehlschlagen; Block-Flip erst nach
+      # Fleet-Bereinigung der betroffenen Consumer (ADR-278-Muster warn→block).
+      - name: "Tests uebersprungen — Gruen ohne Testaussage (warn-first)"
+        if: ${{ inputs.skip_tests && github.ref_name == github.event.repository.default_branch }}
+        run: |
+          echo "::warning title=skip_tests aktiv auf ${GITHUB_REF_NAME}::Unit-/Integration-Tests uebersprungen — dieses Gruen enthaelt KEINE Testaussage (platform#1775, shared-ci#40)."
+          {
+            echo "## ⚠️ Tests uebersprungen (skip_tests: true)"
+            echo ""
+            echo "Dieser Default-Branch-Lauf enthaelt **keine Testaussage** — ci/gate ist gruen, weil geskippte Jobs als bestanden zaehlen."
+            echo "Kontext: platform#1775 · iilgmbh/shared-ci#40 (warn-first, Block-Flip nach Fleet-Bereinigung)."
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: "All CI jobs passed or skipped"
         run: |
           STATUS_LIST='${{ toJSON(needs) }}'
