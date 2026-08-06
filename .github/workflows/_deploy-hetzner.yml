@@ -103,6 +103,16 @@ on:
         required: false
       PROJECT_PAT:
         required: false
+      # Cloudflare-Access-Service-Token für den externen Healthcheck. Liegt die
+      # health_url hinter Access, antwortet sie unangemeldet mit 302 und der
+      # Probe ist strukturell blind (apo-hub#57). Mit diesen beiden Kopfzeilen
+      # sieht er die App. Optional: nicht gesetzt = Probe läuft unverändert
+      # unauthentifiziert, kein Verhaltensunterschied für bestehende Consumer.
+      # Beide oder keins — ein halbes Paar wird ignoriert (s. verify-Job).
+      CF_ACCESS_CLIENT_ID:
+        required: false
+      CF_ACCESS_CLIENT_SECRET:
+        required: false
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────
@@ -338,10 +348,49 @@ jobs:
     steps:
       - name: External health check
         id: health
+        env:
+          HEALTH_URL: ${{ inputs.health_url }}
+          CF_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
+          # Liegt health_url hinter Cloudflare Access, antwortet sie einem
+          # unangemeldeten Aufruf immer mit 302 — der Probe misst dann die
+          # Anmeldeseite, nicht die App (apo-hub#57). Mit Service-Token sieht er
+          # die App: gemessen 2026-08-06 gegen apo.iil.pet/livez/ → ohne Token
+          # 302, mit Token 200. Erst dieser Unterschied ist der Beleg; ein 200
+          # allein hiesse auch, dass gar keine Wand davorsteht.
+          #
+          # Die Kopfzeilen gehen über eine curl-Konfigurationsdatei mit 0600
+          # statt über die Kommandozeile — Argumente wären auf dem Runner in der
+          # Prozessliste sichtbar. GitHub maskiert Secrets nur in LOGS, nicht in
+          # `ps`. Die Datei liegt in $RUNNER_TEMP (ephemer) und wird am Ende
+          # gelöscht.
+          CURL_CFG=""
+          if [ -n "${CF_ID:-}" ] && [ -n "${CF_SECRET:-}" ]; then
+            CURL_CFG="${RUNNER_TEMP}/cf-access.curl"
+            umask 077
+            {
+              printf 'header = "CF-Access-Client-Id: %s"\n' "$CF_ID"
+              printf 'header = "CF-Access-Client-Secret: %s"\n' "$CF_SECRET"
+            } > "$CURL_CFG"
+            echo "ℹ️ Cloudflare-Access-Service-Token vorhanden — Probe läuft authentifiziert."
+          elif [ -n "${CF_ID:-}" ] || [ -n "${CF_SECRET:-}" ]; then
+            # Halbes Paar: schweigend unauthentifiziert weiterlaufen wäre die
+            # gefährlichere Variante — der Lauf sähe aus wie eine Access-Wand.
+            echo "::warning::Nur eine Hälfte des CF-Access-Service-Tokens gesetzt (CF_ACCESS_CLIENT_ID/-SECRET) — Probe läuft unauthentifiziert."
+          fi
+          # `|| true`: der Step läuft unter `bash -e`; ein leeres CURL_CFG liesse
+          # den Trap sonst mit Status 1 enden.
+          trap '[ -n "$CURL_CFG" ] && rm -f "$CURL_CFG" || true' EXIT
+
           for i in $(seq 1 5); do
-            HTTP_CODE=$(curl -sf -o /dev/null -w '%{http_code}' \
-              "${{ inputs.health_url }}" 2>/dev/null || echo "000")
+            if [ -n "$CURL_CFG" ]; then
+              HTTP_CODE=$(curl -sf -o /dev/null -w '%{http_code}' \
+                -K "$CURL_CFG" "$HEALTH_URL" 2>/dev/null || echo "000")
+            else
+              HTTP_CODE=$(curl -sf -o /dev/null -w '%{http_code}' \
+                "$HEALTH_URL" 2>/dev/null || echo "000")
+            fi
             if [ "$HTTP_CODE" = "200" ]; then
               echo "✅ External health check passed"
               echo "healthy=true" >> "$GITHUB_OUTPUT"
@@ -351,7 +400,11 @@ jobs:
             sleep 10
           done
           echo "healthy=false" >> "$GITHUB_OUTPUT"
-          echo "::warning::External health check failed"
+          if [ -n "$CURL_CFG" ]; then
+            echo "::warning::External health check failed (mit Access-Token — das ist ein echter Befund, keine Access-Wand)"
+          else
+            echo "::warning::External health check failed"
+          fi
 
   # ─────────────────────────────────────────────────────────────────────────
   # NOTIFY + SUMMARY
