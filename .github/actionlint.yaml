@@ -1,0 +1,28 @@
+# actionlint-Konfiguration für shared-ci.
+#
+# Diese Datei war seit jeher vorausgesetzt und existierte nie: der Job
+# "Validate Workflows" ruft actionlint mit `-config-file .github/actionlint.yaml`
+# auf und beobachtet denselben Pfad in seinem `paths`-Trigger. Ohne die Datei
+# bricht actionlint mit Exit 3 ab, BEVOR es einen einzigen Workflow prüft — das
+# Gate war damit seit mindestens 2026-08-05 dauerhaft rot und hat aufgehört,
+# etwas zu melden. Ein Repo, das die CI für rund 30 Projekte liefert, prüfte
+# sich selbst nicht mehr.
+#
+# Angelehnt an achimdehnert/platform/.github/actionlint.yaml, aber um die
+# Label-Namen ergänzt, die real in Gebrauch sind: die Consumer-Repos setzen
+# `runs_on: "prod-server"` (siehe risk-hub/.github/workflows/deploy.yml).
+
+self-hosted-runner:
+  labels:
+    - self-hosted
+    - prod-server
+    - hetzner
+    - prod
+    - dev
+    - linux
+
+# Shellcheck-Hinweise sind Stilempfehlungen und berühren die Korrektheit der
+# Workflows nicht. Der Aufruf im Job filtert sie bereits per `-ignore`; hier
+# steht dieselbe Regel, damit ein Aufruf ohne das Flag nicht anders urteilt.
+ignore:
+  - "shellcheck reported issue"
