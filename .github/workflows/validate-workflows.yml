@@ -12,6 +12,11 @@ on:
       - '.github/workflows/*.yml'
       - '.github/actions/**'
       - 'scripts/checks/publish_gate_invariant.sh'
+      # Ohne diese Zeile prueft der Gate seine eigene Konfiguration nie vor dem
+      # Merge: der push-Trigger unten kennt den Pfad, der pull_request-Trigger
+      # kannte ihn nicht. Ein PR, der nur actionlint.yaml aendert, loeste den Job
+      # deshalb gar nicht aus — und ein Job, der nicht laeuft, ist kein Gate.
+      - '.github/actionlint.yaml'
   push:
     branches: [main]
     paths:
