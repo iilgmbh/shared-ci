@@ -19,12 +19,10 @@ on:
   pull_request:
     paths:
       - '.github/workflows/**'
-      - 'tools/check_silent_failures.py'
   push:
     branches: [main]
     paths:
       - '.github/workflows/**'
-      - 'tools/check_silent_failures.py'
   workflow_call: {}
   workflow_dispatch: {}
 
@@ -39,10 +37,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: PyYAML bereitstellen
-        run: python3 -m pip install --quiet pyyaml
-
+      # Der Aufruf zeigte auf `tools/check_silent_failures.py` — eine Datei, die es
+      # in diesem Repo nie gab (sie liegt in achimdehnert/platform). Das Gate war
+      # seit seiner Einfuehrung rot und damit blind (#49). Die Composite-Action
+      # ruft den Pruefer dort auf, wo er lebt; ein Bugfix wirkt sofort ueberall
+      # statt in N auseinanderlaufenden Kopien (platform#1844).
+      #
       # Bewusst NICHT weichgestellt: ein Gate, das seinen eigenen Fehlschlag
       # verschluckt, wäre genau der Fehler, den es sucht.
       - name: Prüfen
-        run: python3 tools/check_silent_failures.py .github/workflows
+        uses: achimdehnert/platform/.github/actions/workflow-guards@92a7b75bb26070c4e1519679903959e21b01f913 # platform main, 2026-08-10
+        with:
+          checks: silent-failures
+          workflows_dir: .github/workflows

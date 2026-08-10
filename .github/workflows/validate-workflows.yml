@@ -11,7 +11,6 @@ on:
       - '.github/workflows/_*.yml'
       - '.github/workflows/*.yml'
       - '.github/actions/**'
-      - 'scripts/checks/publish_gate_invariant.sh'
       - 'scripts/checks/no_docker_actions_in_deploy.sh'
       # Ohne diese Zeile prueft der Gate seine eigene Konfiguration nie vor dem
       # Merge: der push-Trigger unten kennt den Pfad, der pull_request-Trigger
@@ -24,7 +23,6 @@ on:
       - '.github/workflows/_*.yml'
       - '.github/workflows/*.yml'
       - '.github/actions/**'
-      - 'scripts/checks/publish_gate_invariant.sh'
       - 'scripts/checks/no_docker_actions_in_deploy.sh'
       - '.github/actionlint.yaml'
 
@@ -34,11 +32,10 @@ permissions:
   contents: read
 
 jobs:
-  # Eigener Job statt Step im `validate`-Job: dort scheitert seit 2026-08-05 der
-  # letzte Step an `scripts/checks/publish_gate_invariant.sh`, das in diesem Repo
-  # nie existiert hat (es liegt in achimdehnert/platform). Ein Waechter hinter
-  # einem dauerhaft roten Step laeuft nie und meldet damit nichts — deshalb
-  # bekommt er einen eigenen, gruen-faehigen Status.
+  # Eigener Job statt Step im `validate`-Job. Angelegt, als dessen letzter Step
+  # dauerhaft rot war (#49, unten behoben) und jeder Step danach nie lief — ein
+  # Waechter hinter einem roten Step meldet nichts. Bleibt eigenstaendig, damit
+  # sein Status unabhaengig von Lint-/Struktur-Befunden lesbar ist.
   no-docker-actions:
     name: "Keine Docker-Actions in Deploy-Reusables"
     runs-on: ubuntu-latest
@@ -97,8 +94,14 @@ jobs:
           done
           echo "✅ All reusable workflows valid"
 
+      # Zeigte auf `scripts/checks/publish_gate_invariant.sh` — nie in diesem Repo
+      # vorhanden (liegt in achimdehnert/platform), deshalb exit 127 bei jedem Lauf
+      # und alle Steps danach tot (#49). Ueber die Composite-Action geprueft wird
+      # weiterhin DIESES Repo: das Skript cd't auf den git-Toplevel des Workspace.
       - name: ADR-226 publish-gate invariant + #191/#198 API-free guard
-        run: bash scripts/checks/publish_gate_invariant.sh
+        uses: achimdehnert/platform/.github/actions/workflow-guards@92a7b75bb26070c4e1519679903959e21b01f913 # platform main, 2026-08-10
+        with:
+          checks: publish-gate
 
   # test-ci entfernt (#1423): der Job war an `_ci-python.yml` gebunden, das mit
   # diesem PR retired wurde (0 echte Consumer org-weit, SSoT ist iilgmbh/shared-ci).
