@@ -12,6 +12,7 @@ on:
       - '.github/workflows/*.yml'
       - '.github/actions/**'
       - 'scripts/checks/publish_gate_invariant.sh'
+      - 'scripts/checks/no_docker_actions_in_deploy.sh'
       # Ohne diese Zeile prueft der Gate seine eigene Konfiguration nie vor dem
       # Merge: der push-Trigger unten kennt den Pfad, der pull_request-Trigger
       # kannte ihn nicht. Ein PR, der nur actionlint.yaml aendert, loeste den Job
@@ -24,6 +25,7 @@ on:
       - '.github/workflows/*.yml'
       - '.github/actions/**'
       - 'scripts/checks/publish_gate_invariant.sh'
+      - 'scripts/checks/no_docker_actions_in_deploy.sh'
       - '.github/actionlint.yaml'
 
 # Workflow-level default (least privilege, #818 permissions sweep) —
@@ -84,6 +86,11 @@ jobs:
 
       - name: ADR-226 publish-gate invariant + #191/#198 API-free guard
         run: bash scripts/checks/publish_gate_invariant.sh
+
+      # platform#1845: der scp-action-Fix von 07/2026 ging beim Sprung auf v1.1.0
+      # verloren und riss den naechsten self-hosted Deploy mit. Regress-Waechter.
+      - name: Keine Docker-Actions in den Deploy-Reusables (platform#1845)
+        run: bash scripts/checks/no_docker_actions_in_deploy.sh
 
   # test-ci entfernt (#1423): der Job war an `_ci-python.yml` gebunden, das mit
   # diesem PR retired wurde (0 echte Consumer org-weit, SSoT ist iilgmbh/shared-ci).
