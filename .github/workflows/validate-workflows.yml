@@ -34,6 +34,19 @@ permissions:
   contents: read
 
 jobs:
+  # Eigener Job statt Step im `validate`-Job: dort scheitert seit 2026-08-05 der
+  # letzte Step an `scripts/checks/publish_gate_invariant.sh`, das in diesem Repo
+  # nie existiert hat (es liegt in achimdehnert/platform). Ein Waechter hinter
+  # einem dauerhaft roten Step laeuft nie und meldet damit nichts — deshalb
+  # bekommt er einen eigenen, gruen-faehigen Status.
+  no-docker-actions:
+    name: "Keine Docker-Actions in Deploy-Reusables"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Actions aufloesen und auf runs.using pruefen (platform#1845)
+        run: bash scripts/checks/no_docker_actions_in_deploy.sh
+
   validate:
     name: "Validate Syntax"
     runs-on: ubuntu-latest
@@ -86,11 +99,6 @@ jobs:
 
       - name: ADR-226 publish-gate invariant + #191/#198 API-free guard
         run: bash scripts/checks/publish_gate_invariant.sh
-
-      # platform#1845: der scp-action-Fix von 07/2026 ging beim Sprung auf v1.1.0
-      # verloren und riss den naechsten self-hosted Deploy mit. Regress-Waechter.
-      - name: Keine Docker-Actions in den Deploy-Reusables (platform#1845)
-        run: bash scripts/checks/no_docker_actions_in_deploy.sh
 
   # test-ci entfernt (#1423): der Job war an `_ci-python.yml` gebunden, das mit
   # diesem PR retired wurde (0 echte Consumer org-weit, SSoT ist iilgmbh/shared-ci).
