@@ -164,11 +164,14 @@ jobs:
     if: inputs.image_tag_override == ''
     env:
       IMAGE_NAME: ${{ github.repository_owner }}/${{ inputs.app_name }}
+    steps:
+      - uses: actions/checkout@v7
+
       # Eigene Docker-Anmeldung je Lauf statt der des Runner-Benutzers.
       #
       # `runs_on` ist ein selbst-gehosteter Runner, und die laufen als root auf
       # dem Prod-Host (`systemctl cat 'actions.runner*'` → User=root). Ohne
-      # diese Variable schreibt `docker/login-action` nach
+      # diese Umleitung schreibt `docker/login-action` nach
       # /root/.docker/config.json — also in genau die Anmeldung, aus der der
       # Host seine eigenen Images zieht — und räumt sie am Ende des Laufs
       # wieder ab.
@@ -184,10 +187,18 @@ jobs:
       # „Image wurde nicht gebaut" — und der hielt einen Prod-Deploy über
       # 98 Commits blockiert, ohne dass es jemand merkte.
       #
+      # Warum als Schritt und nicht als `env:` am Job: der `runner`-Kontext ist
+      # auf Job-Ebene nicht verfügbar (actionlint: „context 'runner' is not
+      # allowed here"). Über `$GITHUB_ENV` gilt die Variable ab hier für ALLE
+      # folgenden Schritte — auch für künftige, die jemand später ergänzt.
+      #
       # Siehe risk-hub:KONZ-014 und iilgmbh/risk-hub#576.
-      DOCKER_CONFIG: ${{ runner.temp }}/.docker
-    steps:
-      - uses: actions/checkout@v7
+      - name: "Docker-Anmeldung dieses Laufs vom Host trennen"
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/.docker"
+          echo "DOCKER_CONFIG=${RUNNER_TEMP}/.docker" >> "$GITHUB_ENV"
+          echo "Docker-Anmeldung dieses Laufs: ${RUNNER_TEMP}/.docker"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
