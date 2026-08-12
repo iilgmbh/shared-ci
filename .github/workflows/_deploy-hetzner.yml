@@ -310,7 +310,24 @@ jobs:
             # GHCR_TOKEN ist via envs: in dieser SSH-Session; die deploy-remote.sh-
             # Kopien machen selbst keinen Login → ohne dies trifft der pull einen
             # unauthentifizierten Daemon → "denied" (Fleet-Bug, 11 vendored Kopien).
+            #
+            # Der Login läuft in einem LAUF-EIGENEN DOCKER_CONFIG, nicht in
+            # ~/.docker/config.json des SSH-Benutzers. Ohne diese Umleitung
+            # hinterlässt jeder Deploy den kurzlebigen Workflow-Token dauerhaft
+            # in der Anmeldung, aus der der Host auch von Hand zieht — nach dem
+            # Lauf ist der Token tot, die Datei sieht aber gültig aus. Ein
+            # späterer `docker pull` scheitert dann mit `unauthorized`, und das
+            # sieht aus wie ein fehlender Tag. Genau diese Fehldiagnose hielt
+            # einen Prod-Deploy über 98 Commits blockiert (iilgmbh/risk-hub#576).
+            #
+            # DOCKER_CONFIG wird exportiert, bevor deploy-remote.sh startet —
+            # das Skript läuft in derselben Shell und erbt die Variable, sein
+            # `compose pull` benutzt also dieselbe Anmeldung. Das trap räumt das
+            # Verzeichnis auch dann ab, wenn der Deploy mit Fehler endet.
             if [ -n "${GHCR_TOKEN:-}" ]; then
+              DOCKER_CONFIG="$(mktemp -d)"
+              export DOCKER_CONFIG
+              trap 'rm -rf "$DOCKER_CONFIG"' EXIT
               echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             fi
 
