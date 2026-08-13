@@ -479,9 +479,22 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: coverage-integration
+      # Ohne diesen Schritt hing der Job daran, dass `pip` zufaellig im PATH des
+      # Runners liegt. Auf GitHub-hosted stimmt das; auf einem self-hosted Runner
+      # nicht zwingend — weltenhub scheiterte reproduzierbar mit
+      # `pip: command not found` (exit 127), waehrend Unit-, Integration-, Lint-
+      # und Security-Jobs gruen waren. Der Check hiess dann "Coverage Gate", war
+      # rot, und sagte ueber Coverage nichts aus: er blockierte jede PR des Repos,
+      # auch reine Markdown-Aenderungen (weltenhub#52).
+      # Alle anderen Jobs dieser Datei richten Python explizit ein; dieser war der
+      # einzige, der es nicht tat.
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version }}
       - name: Merge and enforce coverage gate
         run: |
-          pip install coverage --break-system-packages || pip install coverage
+          python3 -m pip install coverage --break-system-packages || python3 -m pip install coverage
           python3 -m coverage combine coverage-unit.xml coverage-integration.xml 2>/dev/null || true
           python3 -m coverage report --fail-under=${{ inputs.coverage_threshold }} 2>/dev/null || echo "Coverage data unavailable — skipping gate (threshold=${{ inputs.coverage_threshold }}%)"
 
