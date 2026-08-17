@@ -280,8 +280,21 @@ runs:
       if: ${{ inputs.platform_context_version != '' }}
       shell: bash
       run: |
-        if [ -d "vendor/platform_context" ]; then
+        # Ein Verzeichnis ist noch kein installierbares Projekt. Der Schritt
+        # darunter ("Install additional vendor packages") prueft laengst auf
+        # pyproject.toml/setup.py/setup.cfg — nur dieser Sonderpfad tat es
+        # nicht und riss dadurch den gesamten Test-Job ab, sobald ein Repo
+        # `vendor/platform_context` als reines Modulverzeichnis fuehrt und
+        # ueber `pythonpath = ["src", "vendor"]` einbindet.
+        # Realfall achimdehnert/trading-hub (Lauf 32025399576):
+        # "does not appear to be a Python project" -> Exit 1 im Install-Schritt,
+        # also bevor ein einziger Test lief.
+        if [ -f "vendor/platform_context/pyproject.toml" ] \
+           || [ -f "vendor/platform_context/setup.py" ] \
+           || [ -f "vendor/platform_context/setup.cfg" ]; then
           pip install -e "vendor/platform_context[testing]"
+        elif [ -d "vendor/platform_context" ]; then
+          echo "::notice::vendor/platform_context traegt keine Projektdatei — nicht installierbar, wird ueber pythonpath eingebunden. Bewusst kein PyPI-Rueckfall, damit die vendete Fassung gewinnt."
         else
           pip install "iil-platform-context[testing]${{ inputs.platform_context_version }}" \
             || pip install "platform-context[testing]${{ inputs.platform_context_version }}" \
