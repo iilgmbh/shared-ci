@@ -435,7 +435,36 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
         run: |
           WORKERS=${{ inputs.pytest_workers }}
+          LEER='<?xml version="1.0" ?><coverage version="7.0" timestamp="0" lines-valid="1" lines-covered="1" line-rate="1.0" branches-covered="0" branches-valid="0" branch-rate="0" complexity="0"><packages></packages></coverage>'
           set +e
+
+          # Erst zaehlen, dann messen (iilgmbh/shared-ci#54).
+          #
+          # Der frühere Guard prüfte den Exit-Code des Mess-Laufs auf 5 ("nichts
+          # eingesammelt"). Diese 5 kam nie an: sobald `--cov` mitläuft und das
+          # Consumer-Repo ein `[tool.coverage.report] fail_under` setzt, meldet
+          # pytest-cov die verfehlte Schwelle und überschreibt den Code mit 1.
+          # Ein Repo ohne Integrationstests hatte damit einen dauerhaft roten
+          # Job — belegt an meiki-lra/frist-hub (0 Tests eingesammelt, 49,70 %
+          # Restdeckung aus den Imports, `fail_under = 80` in dessen
+          # pyproject.toml, Lauf 31996826260).
+          #
+          # Der Zähl-Lauf trägt `--cov-fail-under=0`, damit ihn dieselbe
+          # Schwelle nicht ebenso verfälscht. Erst danach entscheidet der
+          # Exit-Code über den Mess-Lauf.
+          pytest -m "integration" --collect-only -q --cov-fail-under=0 >/dev/null 2>&1
+          COLLECT=$?
+          if [ "$COLLECT" -eq 5 ]; then
+            echo "No integration tests collected — creating empty coverage report"
+            echo "$LEER" > coverage-integration.xml
+            exit 0
+          fi
+          if [ "$COLLECT" -ne 0 ]; then
+            echo "::error::Sammeln der Integrationstests fehlgeschlagen (Exit $COLLECT) — das ist ein echter Fehler, kein leerer Satz. Ausgabe:"
+            pytest -m "integration" --collect-only -q --cov-fail-under=0
+            exit "$COLLECT"
+          fi
+
           if [ "$WORKERS" = "1" ] || [ "$WORKERS" = "0" ]; then
             pytest -m "integration" \
               --cov \
@@ -447,13 +476,7 @@ jobs:
               -n "$WORKERS" \
               --dist=loadscope
           fi
-          EXIT_CODE=$?
-          if [ "$EXIT_CODE" -eq 5 ]; then
-            echo "No integration tests collected — creating empty coverage report"
-            echo '<?xml version="1.0" ?><coverage version="7.0" timestamp="0" lines-valid="1" lines-covered="1" line-rate="1.0" branches-covered="0" branches-valid="0" branch-rate="0" complexity="0"><packages></packages></coverage>' > coverage-integration.xml
-            exit 0
-          fi
-          exit $EXIT_CODE
+          exit $?
       - name: Create empty coverage if missing
         if: always()
         run: |
