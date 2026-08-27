@@ -114,6 +114,12 @@ jobs:
   qm-gate:
     name: "QM Gate — ASSUMPTION Check (ADR-174)"
     runs-on: ${{ inputs.runs_on }}
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-qm-gate-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     if: ${{ inputs.enable_qm_gate && github.event.pull_request.draft == false }}
     steps:
       - uses: actions/checkout@v6
@@ -134,6 +140,12 @@ jobs:
   lint:
     name: "Lint & Format"
     runs-on: ${{ inputs.runs_on }}
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-lint-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     # When lint_soft_fail=true the job still runs + annotates, but a failure
     # does not fail the workflow (so consumers can gate deploy on secrets/tests
     # without lint debt blocking them — mcp-hub #78). gitleaks stays hard.
@@ -165,6 +177,12 @@ jobs:
   secrets-scan:
     name: "Secret Detection (gitleaks)"
     runs-on: ${{ inputs.runs_on }}
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-secrets-scan-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     # Blocking gate: a secrets scanner that silently goes green helps no one.
     # NOTE: deliberately NO job-level `permissions:` block and NO GitHub API
     # call. A called reusable workflow can only NARROW the caller's
@@ -195,6 +213,12 @@ jobs:
   security:
     name: "Security Scan (pip-audit + pip check)"
     runs-on: ${{ inputs.runs_on }}
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-security-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     if: ${{ inputs.enable_security_scan }}
     continue-on-error: true        # Job blockiert Deploy nicht — aber Output ist sichtbar
     steps:
@@ -303,6 +327,12 @@ jobs:
   test-unit:
     name: "Unit Tests"
     runs-on: ${{ inputs.runs_on }}
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-test-unit-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     if: ${{ !inputs.skip_tests }}
     services:
       postgres:
@@ -367,6 +397,12 @@ jobs:
   test-integration:
     name: "Integration Tests"
     runs-on: ${{ inputs.runs_on }}
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-test-integration-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     if: ${{ !inputs.skip_tests }}
     services:
       postgres:
@@ -492,6 +528,12 @@ jobs:
   coverage-report:
     name: "Coverage Gate (≥${{ inputs.coverage_threshold }}%)"
     runs-on: ${{ inputs.runs_on }}
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-coverage-report-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     needs: [test-unit, test-integration]
     if: ${{ !inputs.skip_tests }}
     steps:
@@ -524,6 +566,12 @@ jobs:
   test-contract:
     name: "Contract Tests"
     runs-on: ${{ inputs.runs_on }}
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-test-contract-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     needs: [test-unit, test-integration]
     if: ${{ inputs.run_contract_tests && !inputs.skip_tests }}
     services:
@@ -573,6 +621,12 @@ jobs:
   architecture-guardian:
     name: "Architecture Guardian (ADR-155)"
     runs-on: ${{ inputs.runs_on }}
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-architecture-guardian-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     needs: [lint]
     if: ${{ inputs.run_contract_tests && !inputs.skip_tests }}
     steps:
@@ -626,6 +680,12 @@ jobs:
     # hetzner] gepinnt (hetzner trug nur ein verwaister offline-Runner) → blockierte
     # ALLE risk-hub-Merges. Konvention/SoT: platform/infra/hosts.yaml.
     runs-on: ubuntu-latest
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-runner-label-check-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -678,6 +738,12 @@ jobs:
   migrations-smoke:
     name: "Migrations Smoke (opt-in)"
     runs-on: ${{ inputs.runs_on }}
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-migrations-smoke-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     if: ${{ inputs.migrations_smoke }}
     services:
       postgres:
@@ -736,6 +802,12 @@ jobs:
   gate:
     name: "gate"
     runs-on: ${{ inputs.runs_on }}
+    # Ueberholte PR-Laeufe abbrechen (jeder Job wird auf volle Minuten abgerechnet;
+    # ein zweiter Push liess den ersten Lauf bisher zu Ende laufen). Auf main/Tags
+    # nie abbrechen - dort haengen Deploys dran.
+    concurrency:
+      group: ci-python-gate-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
     needs: [qm-gate, lint, secrets-scan, security, test-unit, test-integration, coverage-report, test-contract, architecture-guardian, runner-label-check, migrations-smoke]
     if: always()
     steps:
