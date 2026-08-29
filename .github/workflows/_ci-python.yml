@@ -565,11 +565,46 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python_version }}
+      # Bis 2026-08-29 stand hier `coverage combine coverage-unit.xml …` — combine
+      # liest nur .coverage-Datenbanken, nie XML → „No data to report" → der
+      # `|| echo`-Zweig schluckte alles. Der Job hieß „Coverage Gate", konnte aber
+      # nie rot werden (platform#2428 Kriterium 2; Beleg: writing-hub-Run
+      # 27814891601). Jetzt: Zeilen-Union aus beiden XML-Reports; „keine Daten"
+      # ist ein Fehler, Unterschreitung ist ein Fehler. Ratchet-Regel für
+      # Consumer: `coverage_threshold` = gemessener Ist-Wert (steht im Notice),
+      # nie darunter — nicht das 80-%-Wunschziel.
       - name: Merge and enforce coverage gate
         run: |
-          python3 -m pip install coverage --break-system-packages || python3 -m pip install coverage
-          python3 -m coverage combine coverage-unit.xml coverage-integration.xml 2>/dev/null || true
-          python3 -m coverage report --fail-under=${{ inputs.coverage_threshold }} 2>/dev/null || echo "Coverage data unavailable — skipping gate (threshold=${{ inputs.coverage_threshold }}%)"
+          python3 - "${{ inputs.coverage_threshold }}" coverage-unit.xml coverage-integration.xml <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          threshold = float(sys.argv[1])
+          covered = {}
+          seen = False
+          for path in sys.argv[2:]:
+              try:
+                  root = ET.parse(path).getroot()
+              except (OSError, ET.ParseError) as exc:
+                  print(f"::warning::{path}: {exc}")
+                  continue
+              for cls in root.iter("class"):
+                  seen = True
+                  lines = covered.setdefault(cls.get("filename", "?"), {})
+                  for line in cls.iter("line"):
+                      n = int(line.get("number", "0"))
+                      lines[n] = lines.get(n, False) or int(line.get("hits", "0")) > 0
+          if not seen:
+              print("::error::Coverage Gate: keine Coverage-Daten in coverage-unit.xml/coverage-integration.xml — Gate nicht bewertbar (platform#2428)")
+              sys.exit(1)
+          valid = sum(len(v) for v in covered.values())
+          hit = sum(sum(v.values()) for v in covered.values())
+          pct = 100.0 * hit / valid if valid else 0.0
+          print(f"::notice title=Coverage::{pct:.2f}% ({hit}/{valid} Zeilen, Union Unit+Integration) — Schwelle {threshold:g}%")
+          if pct + 1e-9 < threshold:
+              print(f"::error::Coverage {pct:.2f}% < Schwelle {threshold:g}% — Ratchet: coverage_threshold auf den gemessenen Ist-Wert setzen (platform#2428)")
+              sys.exit(1)
+          PY
 
   test-contract:
     name: "Contract Tests"
