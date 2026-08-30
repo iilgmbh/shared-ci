@@ -231,7 +231,7 @@ jobs:
       - name: "Deploy-Preflight (platform ports.yaml/hosts.yaml)"
         env:
           APP: ${{ inputs.app_name }}
-          ENVIRONMENT: staging
+          ENVIRONMENT: ${{ inputs.environment }}
         run: |
           set -u
           B=https://raw.githubusercontent.com/achimdehnert/platform/main
