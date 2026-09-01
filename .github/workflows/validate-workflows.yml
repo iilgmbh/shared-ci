@@ -44,6 +44,17 @@ jobs:
       - name: Actions aufloesen und auf runs.using pruefen (platform#1845)
         run: bash scripts/checks/no_docker_actions_in_deploy.sh
 
+  # Eigener Job aus demselben Grund wie no-docker-actions: sein Status soll
+  # unabhaengig von Lint-Befunden lesbar sein. Er fuehrt den Auswahl-Block AUS
+  # _deploy-unified.yml aus — nicht eine Kopie davon.
+  compose-auswahl:
+    name: "compose-Auswahl: Overlay-Dateien fahren mit"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Auswahl gegen Fixtures pruefen (platform#2586 K3)
+        run: bash scripts/checks/compose_liste_check.sh
+
   validate:
     name: "Validate Syntax"
     runs-on: ubuntu-latest
