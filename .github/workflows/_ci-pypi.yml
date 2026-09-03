@@ -132,8 +132,8 @@ jobs:
     name: "Lint & Format"
     runs-on: ${{ inputs.runs_on }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: Install ruff
@@ -161,7 +161,7 @@ jobs:
     # preferred) or `.gitleaks.toml` (rule allowlist), both auto-honored and
     # echoed by the action. Template: platform docs/templates/.gitleaks.toml.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
       - name: Secret scan (git history)
@@ -179,8 +179,8 @@ jobs:
       matrix:
         python: ${{ fromJSON(inputs.python_versions) }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python }}
       - name: Resolve install extra (fail loud on wrong extra name)
@@ -227,8 +227,8 @@ jobs:
     if: ${{ inputs.enable_build }}
     runs-on: ${{ inputs.runs_on }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: Build sdist + wheel
@@ -258,8 +258,8 @@ jobs:
     runs-on: ${{ inputs.runs_on }}
     continue-on-error: ${{ !inputs.mypy_blocking }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: Resolve install extra
@@ -281,8 +281,8 @@ jobs:
     # whether a CVE is a hard fail; pip check (dependency conflicts in a
     # published package) is always blocking.
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: Resolve install extra
@@ -320,8 +320,8 @@ jobs:
     runs-on: ${{ inputs.runs_on }}
     continue-on-error: ${{ !inputs.bandit_blocking }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: bandit
@@ -343,8 +343,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ inputs.python_version }}
       - name: PyPI-Publish muss OIDC sein (kein password-Input)
