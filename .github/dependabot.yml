@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # Haelt die SHA-gepinnten Third-Party-Actions aktuell (Pinning-PR 2026-09-03).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
