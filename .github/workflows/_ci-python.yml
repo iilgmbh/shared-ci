@@ -405,7 +405,7 @@ jobs:
               -n "$WORKERS" \
               --dist=loadscope
           fi
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-unit
           path: ${{ inputs.src_dir }}/coverage-unit.xml
@@ -535,7 +535,7 @@ jobs:
           if [ ! -f ${{ inputs.src_dir }}/coverage-integration.xml ]; then
             echo '<?xml version="1.0" ?><coverage version="7.0" timestamp="0" lines-valid="1" lines-covered="1" line-rate="1.0" branches-covered="0" branches-valid="0" branch-rate="0" complexity="0"><packages></packages></coverage>' > ${{ inputs.src_dir }}/coverage-integration.xml
           fi
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: coverage-integration
