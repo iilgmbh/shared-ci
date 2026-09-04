@@ -85,6 +85,14 @@ on:
         required: false
         default: 'self-hosted'
         type: string
+      allowed_runner_labels:
+        description: >-
+          Zusatz-Labels dedizierter self-hosted Runner dieses Repos, die der
+          Runner-Label-Check als gedeckt behandelt (kommagetrennt, z. B. "prod-server").
+          Nur Labels eintragen, die ein registrierter Online-Runner traegt (#75).
+        required: false
+        default: ''
+        type: string
       runs_on_light:
         description: >-
           Runner für Jobs ohne Repo-Code-Ausführung (qm-gate, coverage-report, gate).
@@ -737,14 +745,18 @@ jobs:
       - name: Install PyYAML
         run: pip install pyyaml
       - name: "Keine toten self-hosted-Label-Pins"
+        env:
+          ALLOWED_RUNNER_LABELS: ${{ inputs.allowed_runner_labels }}
         run: |
           python3 - <<'PY'
-          import sys, glob, yaml
+          import os, sys, glob, yaml
           # Labels, die jeder self-hosted Runner automatisch trägt:
           AUTO = {"self-hosted", "linux", "x64"}
-          # Erlaubte Zusatz-Labels (leer = nur plain self-hosted). Bei neuem dedizierten
-          # Runner: hier UND in platform/infra/hosts.yaml (status: online) ergänzen.
-          ALLOWED_EXTRA = set()
+          # Erlaubte Zusatz-Labels kommen vom Konsumenten (Input allowed_runner_labels),
+          # nicht mehr als Konstante hier: eine leere Konstante liess jedes dedizierte
+          # Runner-Label durchfallen, auch bei registriertem Online-Runner (#75,
+          # mcp-hub#249). Eintrag im Konsumenten UND in platform/infra/hosts.yaml.
+          ALLOWED_EXTRA = {s.strip() for s in os.environ.get("ALLOWED_RUNNER_LABELS", "").split(",") if s.strip()}
           HOSTED = ("ubuntu", "windows", "macos")
           issues = []
           for wf in sorted(glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml")):
