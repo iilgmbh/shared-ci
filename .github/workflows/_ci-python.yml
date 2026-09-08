@@ -50,6 +50,24 @@ on:
         required: false
         default: false
         type: boolean
+      install_playwright:
+        description: >-
+          Install Playwright browsers in the Integration Tests job. Opt-in,
+          default false — nothing changes for existing consumers.
+
+          Why: tests that need a browser skip silently when none is present, and
+          a skipped test still counts as a passing job while its coverage
+          quietly disappears. On a self-hosted runner with a browser already on
+          the machine those tests ran by accident; the same workflow on a
+          GitHub-hosted runner lost them. Measured at achimdehnert/writing-hub
+          on 2026-09-08: 77 UI tests skipped and coverage dropped from 87.71 %
+          to 86.56 % (580 covered lines) purely from the runner change, with no
+          code change at all.
+
+          Set to true if your repo has browser tests marked `integration`.
+        required: false
+        default: false
+        type: boolean
       platform_context_version:
         description: 'platform-context[testing] version to install (empty = skip)'
         required: false
@@ -447,6 +465,18 @@ jobs:
           requirements_file: ${{ inputs.requirements_file }}
           test_requirements_file: ${{ inputs.test_requirements_file }}
           platform_context_version: ${{ inputs.platform_context_version }}
+      # Opt-in (install_playwright). `--with-deps` zieht die System-Bibliotheken
+      # mit, die ein GitHub-hosted Runner nicht vorhaelt; ohne sie startet der
+      # Browser nicht und die Tests ueberspringen still.
+      #
+      # Bewusst nur Chromium: die Consumer-Repos mit Browser-Tests fahren
+      # ausschliesslich Chromium, und jede weitere Engine kostet Laufzeit in
+      # JEDEM Lauf. Wer mehr braucht, meldet sich — dann wird daraus ein Input
+      # mit Browserliste statt einer stillen Verbreiterung fuer alle.
+      - name: Install Playwright browsers
+        if: ${{ inputs.install_playwright }}
+        working-directory: ${{ inputs.src_dir }}
+        run: python -m playwright install --with-deps chromium
       - name: Migration Graph Check
         working-directory: ${{ inputs.src_dir }}
         env:
