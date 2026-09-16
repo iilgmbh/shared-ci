@@ -1,0 +1,86 @@
+# _bot-review.yml — Reusable: Bot-Approval fuer CI-gruene Owner-PRs (platform#3268).
+#
+# VORSCHLAG, DER DIE MACHT DES AGENTEN ERWEITERT (Lotsen-Charta Art. 3) — nach
+# dem Muster von achimdehnert/platform bot-review.yml (Owner-Go 2026-08-25).
+# Tot, bis das aufrufende Repo das Secret BOT_REVIEW_TOKEN hat und das Bot-Konto
+# dort Collaborator (write) ist — beides Owner-Schritte, nicht Agent.
+#
+# Der Bot urteilt nicht inhaltlich: er stellt fest, dass jedes Gate-als-Code
+# gruen ist, und ersetzt den Reflex-Klick. Was er NIE approvet (bleibt Mensch):
+# policies/, docs/adr/, CODEOWNERS, diese Datei + ihr Caller, das Skript selbst,
+# deploy*.yml (Prod-Deploy-Definition) und Migrationen (Pruefrage, platform#3244).
+# Der Merge bleibt beim Werkzeug pr_merge_sa.py mit seinen Regeln.
+name: _bot-review
+
+on:
+  workflow_call:
+    inputs:
+      owner_login:
+        description: "Nur PRs dieses Autors (Sitzungen laufen darunter)"
+        type: string
+        default: achimdehnert
+      kontext_kommentar_noetig:
+        description: "Approval nur, wenn ein github-actions-Kommentar (Context-Reviewer) am PR haengt"
+        type: boolean
+        default: false
+      auch_ohne_review_pflicht:
+        description: "Auch approven, wenn der PR nicht review-blockiert (CLEAN) ist — noetig, weil pr_merge_sa.py fuer .github/ trotzdem M2 verlangt"
+        type: boolean
+        default: true
+    secrets:
+      BOT_REVIEW_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: "Bot-Token vorhanden?"
+        id: token
+        env:
+          BOT_REVIEW_TOKEN: ${{ secrets.BOT_REVIEW_TOKEN }}
+        run: |
+          if [ -z "${BOT_REVIEW_TOKEN}" ]; then
+            echo "BOT_REVIEW_TOKEN fehlt — Bot-Review nicht scharf (Owner-Schritt offen)."
+            echo "scharf=nein" >> "$GITHUB_OUTPUT"
+          else
+            echo "scharf=ja" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Kanon auschecken (Kandidaten-Skript)
+        if: steps.token.outputs.scharf == 'ja'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: iilgmbh/shared-ci
+          path: _shared_ci
+
+      - name: Kandidaten pruefen und approven
+        if: steps.token.outputs.scharf == 'ja'
+        env:
+          GH_TOKEN: ${{ secrets.BOT_REVIEW_TOKEN }}
+          OWNER_LOGIN: ${{ inputs.owner_login }}
+          AUCH_CLEAN: ${{ inputs.auch_ohne_review_pflicht && '1' || '0' }}
+          KONTEXT_NOETIG: ${{ inputs.kontext_kommentar_noetig && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          BOT_LOGIN="$(gh api user --jq .login)"
+          export BOT_LOGIN
+          echo "Bot-Konto: $BOT_LOGIN"
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 \
+            --json number,isDraft,author,mergeStateStatus,reviewDecision,reviews,files,statusCheckRollup,url \
+            > /tmp/prs.json
+          python3 _shared_ci/tools/bot_review_kandidaten.py /tmp/prs.json /tmp/kandidaten
+          while read -r n || [ -n "$n" ]; do
+            [ -n "$n" ] || continue
+            if [ "$KONTEXT_NOETIG" = "1" ] && ! gh api "repos/$GITHUB_REPOSITORY/issues/$n/comments" --jq '.[].user.login' | grep -q "github-actions"; then
+              echo "#$n: kein Context-Reviewer-Kommentar — kein Approve"; continue
+            fi
+            gh pr review "$n" --repo "$GITHUB_REPOSITORY" --approve \
+              --body "Bot-Review (iilgmbh/shared-ci _bot-review.yml): alle Checks gruen, kein Tabu-Pfad (policies/, docs/adr/, CODEOWNERS, deploy*.yml, migrations/). Kein inhaltliches Urteil — Gate-als-Code-Bilanz. Vorschlag platform#3268."
+            echo "#$n approved"
+          done < /tmp/kandidaten
