@@ -110,7 +110,7 @@ jobs:
       # und alle Steps danach tot (#49). Ueber die Composite-Action geprueft wird
       # weiterhin DIESES Repo: das Skript cd't auf den git-Toplevel des Workspace.
       - name: ADR-226 publish-gate invariant + #191/#198 API-free guard
-        uses: iilgmbh/shared-ci/.github/actions/workflow-guards@main
+        uses: ./.github/actions/workflow-guards
         with:
           checks: publish-gate
 

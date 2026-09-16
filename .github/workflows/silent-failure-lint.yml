@@ -46,7 +46,7 @@ jobs:
       # Bewusst NICHT weichgestellt: ein Gate, das seinen eigenen Fehlschlag
       # verschluckt, wäre genau der Fehler, den es sucht.
       - name: Prüfen
-        uses: iilgmbh/shared-ci/.github/actions/workflow-guards@main
+        uses: ./.github/actions/workflow-guards
         with:
           checks: silent-failures
           workflows_dir: .github/workflows
