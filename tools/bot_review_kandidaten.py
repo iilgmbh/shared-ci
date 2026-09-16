@@ -119,7 +119,9 @@ def waehle_kandidaten(
             and r.get("state") == "APPROVED"
         ]
         if eigene:
-            skip(nr, f"bereits von {bot_login} approved ({len(eigene)}x) — kein weiteres")
+            skip(
+                nr, f"bereits von {bot_login} approved ({len(eigene)}x) — kein weiteres"
+            )
             continue
         # In Repos ohne Review-Ruleset ist der PR CLEAN; das Merge-Werkzeug
         # (pr_merge_sa.py) verlangt fuer Governance-Pfade trotzdem ein Approval.

@@ -1,0 +1,27 @@
+# tools-tests.yml — pytest fuer tools/ (bisher lief hier kein einziger Python-Test;
+# mit tools/bot_review_kandidaten.py liegt zum ersten Mal Logik im Kanon, die
+# ein Approval ausloest — die darf nicht ungetestet driften, platform#3268).
+name: tools-tests
+
+on:
+  pull_request:
+    paths: ["tools/**"]
+  push:
+    branches: [main]
+    paths: ["tools/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: "pytest tools/tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python3 -m pip install --quiet pytest
+      - run: python3 -m pytest tools/tests -q
