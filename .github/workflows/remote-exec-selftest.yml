@@ -1,0 +1,164 @@
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  remote-exec: Composite gegen einen echten sshd pruefen (shared-ci#88)     ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+# Der Workflow-Diff eines PRs zeigt Aenderungen in Composite Actions nicht
+# (Lehre platform#3234). Deshalb faehrt dieser Workflow die Composite echt:
+# gegen einen sshd auf 127.0.0.1 des Runners, einmal aus HEAD (./) und einmal
+# ueber genau den SHA-Pin, den die Deploy-Reusables benutzen.
+
+name: remote-exec selftest
+
+on:
+  pull_request:
+    paths:
+      - '.github/actions/remote-exec/**'
+      - '.github/workflows/_deploy-*.yml'
+      - '.github/workflows/remote-exec-selftest.yml'
+      - 'scripts/checks/remote_exec_selftest.sh'
+      - 'scripts/checks/deploy_remote_exec_check.sh'
+  push:
+    branches: [main]
+    paths:
+      - '.github/actions/remote-exec/**'
+      - '.github/workflows/_deploy-*.yml'
+      - '.github/workflows/remote-exec-selftest.yml'
+      - 'scripts/checks/remote_exec_selftest.sh'
+      - 'scripts/checks/deploy_remote_exec_check.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pin-check:
+    name: "Deploy-Reusables: kein appleboy, remote-exec per SHA gepinnt"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - run: bash scripts/checks/deploy_remote_exec_check.sh
+
+  script:
+    name: "remote-exec.sh: Faelle gegen lokalen sshd"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: sshd bereitstellen
+        run: |
+          set -euo pipefail
+          [ -x /usr/sbin/sshd ] || { sudo apt-get update -q && sudo apt-get install -yq openssh-server; }
+          sudo mkdir -p /run/sshd
+      - run: bash scripts/checks/remote_exec_selftest.sh
+
+  composite:
+    name: "Composite echt aufrufen (./ und SHA-Pin)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: sshd starten
+        run: |
+          set -euo pipefail
+          [ -x /usr/sbin/sshd ] || { sudo apt-get update -q && sudo apt-get install -yq openssh-server; }
+          sudo mkdir -p /run/sshd
+          D="$RUNNER_TEMP/sshd"
+          bash scripts/checks/remote_exec_selftest.sh serve "$D"
+          cat "$D/github_env" >> "$GITHUB_ENV"
+          { echo "RX_T_KEY<<KEYEOF"; cat "$D/client"; echo "KEYEOF"; } >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/ziel" work/deployment/scripts
+          echo "compose-inhalt" > work/docker-compose.prod.yml
+          echo '{"app":"x"}' > work/.deploy-manifest.json
+          echo "skript" > work/deployment/scripts/deploy-remote.sh
+
+      - name: "exec mit envs + Fingerabdruck (./)"
+        uses: ./.github/actions/remote-exec
+        env:
+          GHCR_TOKEN: "tok'en"
+          GHCR_USER: bot
+        with:
+          host: 127.0.0.1:${{ env.RX_T_PORT }}
+          username: ${{ env.RX_T_USER }}
+          key: ${{ env.RX_T_KEY }}
+          fingerprint: ${{ env.RX_T_FP }}
+          envs: GHCR_TOKEN,GHCR_USER
+          script: |
+            set -euo pipefail
+            [ "$GHCR_TOKEN" = "tok'en" ]
+            [ "$GHCR_USER" = bot ]
+            # Die ssh-Sitzung erbt die Runner-Umgebung nicht — Pfad per Ausdruck.
+            [ -z "${RUNNER_TEMP:-}" ]
+            echo "remote: $(hostname) als $(id -un)" > "${{ runner.temp }}/ziel/exec-lief"
+
+      - name: "copy Kommaliste + overwrite (./), Quellen relativ zum Workspace"
+        uses: ./.github/actions/remote-exec
+        with:
+          host: 127.0.0.1
+          port: ${{ env.RX_T_PORT }}
+          username: ${{ env.RX_T_USER }}
+          key: ${{ env.RX_T_KEY }}
+          known_hosts: ${{ env.RX_T_KH }}
+          source: "work/docker-compose.prod.yml,work/.deploy-manifest.json"
+          target: ${{ runner.temp }}/ziel/
+          strip_components: 1
+          overwrite: true
+
+      - name: "Exit-Code 7 muss den Schritt rot machen (./)"
+        id: exit7
+        # Negativtest: der Schritt SOLL scheitern. Nicht still — "Ergebnisse
+        # pruefen" verlangt steps.exit7.outcome == failure und wird sonst rot.
+        continue-on-error: true
+        uses: ./.github/actions/remote-exec
+        with:
+          host: 127.0.0.1:${{ env.RX_T_PORT }}
+          username: ${{ env.RX_T_USER }}
+          key: ${{ env.RX_T_KEY }}
+          fingerprint: ${{ env.RX_T_FP }}
+          script: |
+            set -euo pipefail
+            exit 7
+
+      - name: "Falscher Fingerabdruck muss den Schritt rot machen (./)"
+        id: badfp
+        # Negativtest: der Schritt SOLL scheitern. Nicht still — "Ergebnisse
+        # pruefen" verlangt steps.badfp.outcome == failure und wird sonst rot.
+        continue-on-error: true
+        uses: ./.github/actions/remote-exec
+        with:
+          host: 127.0.0.1:${{ env.RX_T_PORT }}
+          username: ${{ env.RX_T_USER }}
+          key: ${{ env.RX_T_KEY }}
+          fingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          script: "touch ${{ runner.temp }}/ziel/darf-nicht-sein"
+
+      # Genau die Referenz, die _deploy-unified.yml/_deploy-hetzner.yml nutzen.
+      # Beweist, dass der Pin von GitHub aufgeloest wird und dort dasselbe tut.
+      - name: "copy mit strip_components ueber den SHA-Pin der Reusables"
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
+        with:
+          host: 127.0.0.1:${{ env.RX_T_PORT }}
+          username: ${{ env.RX_T_USER }}
+          key: ${{ env.RX_T_KEY }}
+          fingerprint: ${{ env.RX_T_FP }}
+          source: work/deployment/scripts/deploy-remote.sh
+          target: ${{ runner.temp }}/ziel/scripts/
+          strip_components: 3
+
+      - name: Ergebnisse pruefen
+        env:
+          EXIT7: ${{ steps.exit7.outcome }}
+          BADFP: ${{ steps.badfp.outcome }}
+        run: |
+          set -euo pipefail
+          Z="$RUNNER_TEMP/ziel"
+          ls -la "$Z" "$Z/scripts"
+          grep -q "remote:" "$Z/exec-lief"
+          [ "$(cat "$Z/docker-compose.prod.yml")" = compose-inhalt ]
+          [ "$(cat "$Z/.deploy-manifest.json")" = '{"app":"x"}' ]
+          [ "$(cat "$Z/scripts/deploy-remote.sh")" = skript ]
+          [ "$EXIT7" = failure ] || { echo "::error::exit 7 schlug nicht durch ($EXIT7)"; exit 1; }
+          [ "$BADFP" = failure ] || { echo "::error::falscher Fingerabdruck wurde akzeptiert ($BADFP)"; exit 1; }
+          [ ! -e "$Z/darf-nicht-sein" ] || { echo "::error::Skript lief trotz falschem Fingerabdruck"; exit 1; }
+          if find "$RUNNER_TEMP" -maxdepth 1 -name 'remote-exec.*' | grep -q .; then
+            echo "::error::Arbeitsverzeichnis mit Key blieb liegen"; exit 1
+          fi
+          echo "✅ Composite: exec, envs, copy, strip_components, Exit-Code, Fingerabdruck — alles wie erwartet"

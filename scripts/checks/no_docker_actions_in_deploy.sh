@@ -35,11 +35,18 @@ rc=0
 checked=0
 
 fetch_using() {
-  # $1=owner/repo  $2=ref  -> gibt den Wert von runs.using aus, leer bei Fehler
-  local repo="$1" ref="$2" body="" f
+  # $1=owner/repo[/unterpfad]  $2=ref  -> gibt den Wert von runs.using aus.
+  # Unterpfad (z.B. iilgmbh/shared-ci/.github/actions/remote-exec, #88): die
+  # action.yml liegt unter <owner>/<repo>/<ref>/<unterpfad>/, nicht hinter dem
+  # vollen Pfad als Repo-Name.
+  local repo="$1" ref="$2" body="" f sub=""
+  if [[ "$repo" == */*/* ]]; then
+    sub="/${repo#*/*/}"
+    repo="$(printf '%s' "$repo" | cut -d/ -f1-2)"
+  fi
   for f in action.yml action.yaml; do
     for attempt in 1 2 3; do
-      if body=$(curl -sfL --max-time 20 "$RAW/$repo/$ref/$f" 2>/dev/null); then
+      if body=$(curl -sfL --max-time 20 "$RAW/$repo/$ref$sub/$f" 2>/dev/null); then
         printf '%s\n' "$body" \
           | grep -m1 -E '^[[:space:]]*using:' \
           | sed -E 's/.*using:[[:space:]]*//; s/["'"'"']//g; s/[[:space:]]*$//'
@@ -57,7 +64,7 @@ for file in "${FILES[@]}"; do
   # workflow mit /.github/workflows/, keine auskommentierten Beispielzeilen)
   while IFS= read -r ref; do
     case "$ref" in
-      ./*|.\/*) continue ;;
+      ./*) continue ;;
       */.github/workflows/*) continue ;;
     esac
     repo="${ref%@*}"

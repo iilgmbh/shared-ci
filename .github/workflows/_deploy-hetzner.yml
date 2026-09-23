@@ -97,6 +97,11 @@ on:
         required: true
       HETZNER_SSH_KEY:
         required: true
+      # SHA256-Fingerabdruck des Host-Schluessels (SHA256:…), shared-ci#88.
+      # Optional: nicht gesetzt = Host-Schluessel wie bisher ungeprueft, mit
+      # ::warning:: im Lauf. Gesetzt = StrictHostKeyChecking gegen genau ihn.
+      HETZNER_SSH_FINGERPRINT:
+        required: false
       SLACK_WEBHOOK_URL:
         required: false
       SOPS_AGE_KEY:
@@ -298,18 +303,20 @@ jobs:
           fi
 
       - name: Sync deploy script to VM
-        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
+        # Eigene Composite mit nativem ssh, per SHA gepinnt (shared-ci#88).
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
         with:
           host: ${{ secrets.HETZNER_HOST }}
           username: ${{ secrets.HETZNER_USER }}
           key: ${{ secrets.HETZNER_SSH_KEY }}
+          fingerprint: ${{ secrets.HETZNER_SSH_FINGERPRINT }}
           source: deployment/scripts/deploy-remote.sh
           target: ${{ inputs.deploy_path }}/scripts/
           strip_components: 2
 
       - name: Execute deploy
         id: run
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
         env:
           GHCR_TOKEN: ${{ github.token }}
           PROJECT_PAT: ${{ secrets.PROJECT_PAT }}
@@ -317,6 +324,7 @@ jobs:
           host: ${{ secrets.HETZNER_HOST }}
           username: ${{ secrets.HETZNER_USER }}
           key: ${{ secrets.HETZNER_SSH_KEY }}
+          fingerprint: ${{ secrets.HETZNER_SSH_FINGERPRINT }}
           command_timeout: 10m
           envs: GHCR_TOKEN,PROJECT_PAT
           script: |
