@@ -308,24 +308,24 @@ jobs:
       # removed service / wrong image path / outdated port mapping).
       - name: Sync docker-compose.staging.yml to host
         if: hashFiles('docker-compose.staging.yml') != ''
-        # v1.0.0 ist composite. v0.1.7 war eine Docker-Action, deren Image GitHub
-        # bereits im Job-Setup baut — auf self-hosted Runnern stirbt der Job dort,
-        # bevor ein Step laeuft (#1845, Wiederholung von shared-ci#22).
-        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
+        # Eigene Composite mit dem ssh des Runners statt Drittanbieter-Action
+        # (shared-ci#88). Per SHA gepinnt, nicht per ./ — ein ./-Pfad zeigte hier
+        # auf den Checkout des Consumers. Pin-Waechter:
+        # scripts/checks/deploy_remote_exec_check.sh
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
           key: ${{ secrets.STAGING_SSH_KEY }}
           fingerprint: ${{ secrets.STAGING_SSH_FINGERPRINT }}
           source: "docker-compose.staging.yml"
-          # scp-action treats `target` as a directory and creates the file
-          # inside it. deploy.sh detects `docker-compose.staging.yml` for the
-          # staging environment automatically (see ADR-022).
+          # `target` ist ein Verzeichnis; die Datei landet darin. deploy.sh
+          # erkennt `docker-compose.staging.yml` fuer staging selbst (ADR-022).
           target: "${{ inputs.app_path }}"
           overwrite: true
 
       - name: Deploy to staging
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
         timeout-minutes: 15
         env:
           # Kurzlebiger Workflow-Token → deploy.sh loggt damit frisch bei GHCR ein,
@@ -516,8 +516,8 @@ jobs:
 
       - name: Sync compose + manifest to host (remote runner)
         if: startsWith(inputs.runs_on, 'ubuntu')
-        # composite statt Docker-Action — siehe Begruendung oben (#1845).
-        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
+        # eigene Composite mit nativem ssh — siehe Staging-Sync oben (#88).
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -550,7 +550,7 @@ jobs:
 
       - name: Deploy to production (SSH — remote runner)
         if: startsWith(inputs.runs_on, 'ubuntu')
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
         timeout-minutes: 15
         env:
           # Siehe Staging-Step: frischer GHCR-Login statt veralteter Host-Token-Datei.
