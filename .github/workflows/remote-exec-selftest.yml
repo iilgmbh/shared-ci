@@ -104,6 +104,8 @@ jobs:
 
       - name: "Exit-Code 7 muss den Schritt rot machen (./)"
         id: exit7
+        # Negativtest: der Schritt SOLL scheitern. Nicht still — "Ergebnisse
+        # pruefen" verlangt steps.exit7.outcome == failure und wird sonst rot.
         continue-on-error: true
         uses: ./.github/actions/remote-exec
         with:
@@ -117,6 +119,8 @@ jobs:
 
       - name: "Falscher Fingerabdruck muss den Schritt rot machen (./)"
         id: badfp
+        # Negativtest: der Schritt SOLL scheitern. Nicht still — "Ergebnisse
+        # pruefen" verlangt steps.badfp.outcome == failure und wird sonst rot.
         continue-on-error: true
         uses: ./.github/actions/remote-exec
         with:
