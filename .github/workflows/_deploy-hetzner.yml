@@ -31,7 +31,7 @@ on:
         required: true
         type: string
       compose_file:
-        description: 'Docker Compose file name'
+        description: 'Docker Compose file name (wird bei jedem Deploy aus dem Repo auf den Host übernommen: validiert, alte Kopie als .bak-<ts>, #86)'
         required: false
         default: 'docker-compose.prod.yml'
         type: string
@@ -314,6 +314,18 @@ jobs:
           target: ${{ inputs.deploy_path }}/scripts/
           strip_components: 2
 
+      # #86: Die Compose-Datei auf dem Host war bisher eine statische Kopie vom Erst-Setup —
+      # Volumes/Env/Limits aus dem Repo erreichten Prod nie, der Deploy war trotzdem grün.
+      # Sie landet zuerst in .incoming/ und wird im Deploy-Schritt validiert, gesichert, ersetzt.
+      - name: Sync compose file to VM (staging area)
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
+        with:
+          host: ${{ secrets.HETZNER_HOST }}
+          username: ${{ secrets.HETZNER_USER }}
+          key: ${{ secrets.HETZNER_SSH_KEY }}
+          source: ${{ inputs.compose_file }}
+          target: ${{ inputs.deploy_path }}/.incoming/
+
       - name: Execute deploy
         id: run
         uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
@@ -345,6 +357,33 @@ jobs:
                 sed -i "s|^GITHUB_TOKEN=.*|GITHUB_TOKEN=${PROJECT_PAT}|" "$ENV_FILE"
               else
                 echo "GITHUB_TOKEN=${PROJECT_PAT}" >> "$ENV_FILE"
+              fi
+            fi
+
+            # #86: Compose-Datei aus dem Repo übernehmen — validieren, sichern, ersetzen.
+            # Vorher lag /opt/<app>/<compose> als Erst-Setup-Kopie da und driftete still
+            # (apo-hub 2026-09-21: Volume + Env aus zwei grünen Deploys nie in Prod).
+            COMPOSE_NAME="$(basename "${{ inputs.compose_file }}")"
+            INCOMING="${{ inputs.deploy_path }}/.incoming/${COMPOSE_NAME}"
+            COMPOSE_HOST="${{ inputs.deploy_path }}/${COMPOSE_NAME}"
+            if [ -f "$INCOMING" ]; then
+              if [ -f "$COMPOSE_HOST" ] && cmp -s "$INCOMING" "$COMPOSE_HOST"; then
+                echo "Compose-Datei unverändert (${COMPOSE_NAME})"
+                rm -f "$INCOMING"
+              else
+                # Validierung im Projektverzeichnis, damit env_file/relative Pfade auflösen.
+                if ! docker compose --project-directory "${{ inputs.deploy_path }}" \
+                     --env-file "$ENV_FILE" -f "$INCOMING" config --quiet; then
+                  echo "::error::Neue Compose-Datei ungültig — Host-Kopie bleibt, Deploy abgebrochen"
+                  rm -f "$INCOMING"
+                  exit 1
+                fi
+                if [ -f "$COMPOSE_HOST" ]; then
+                  cp -a "$COMPOSE_HOST" "${COMPOSE_HOST}.bak-$(date +%Y%m%d_%H%M%S)"
+                  ls -1t "${COMPOSE_HOST}".bak-* 2>/dev/null | tail -n +6 | xargs -r rm -f
+                fi
+                mv "$INCOMING" "$COMPOSE_HOST"
+                echo "Compose-Datei aktualisiert: ${COMPOSE_NAME} (Sicherung .bak-<ts>, max. 5)"
               fi
             fi
 
