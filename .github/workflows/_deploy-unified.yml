@@ -270,7 +270,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # ── Deploy-Preflight (platform KONZ-054 E1, Owner-Go 2026-08-30 "77") ──────
-      # Liest infra/ports.yaml + infra/hosts.yaml aus platform (oeffentlich) und
+      # Liest ports.yaml + hosts.yaml (Auszug aus platform, spiegel/platform/) und
       # prueft VOR dem Deploy: ist der Dienst `aktiv`, und ist DIESER Runner-Host
       # der deklarierte prod_host? Anlass: coach-hub war stillgelegt deklariert und
       # wurde trotzdem auf prod deployt, wo es 25 h in einer Fehlerschleife lief.
@@ -283,10 +283,11 @@ jobs:
           ENVIRONMENT: staging
         run: |
           set -u
-          B=https://raw.githubusercontent.com/achimdehnert/platform/main
+          # Spiegel statt platform: platform wird privat (platform#3596, #3234 K3)
+          B=https://raw.githubusercontent.com/iilgmbh/shared-ci/main/spiegel/platform
           D=$(mktemp -d)
-          for f in tools/deploy_preflight.py infra/ports.yaml infra/hosts.yaml; do
-            curl -fsSL --retry 3 "$B/$f" -o "$D/$(basename "$f")" || { echo "::error::Preflight: $f aus platform nicht ladbar — kein Deploy ohne Deklaration"; exit 2; }
+          for f in deploy_preflight.py ports.yaml hosts.yaml; do
+            curl -fsSL --retry 3 "$B/$f" -o "$D/$f" || { echo "::error::Preflight: $f aus dem Spiegel nicht ladbar — kein Deploy ohne Deklaration"; exit 2; }
           done
           python3 -c "import yaml" 2>/dev/null || pip install -q pyyaml
           HOST=$(hostname -I 2>/dev/null | awk '{print $1}')
@@ -370,7 +371,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # ── Deploy-Preflight (platform KONZ-054 E1, Owner-Go 2026-08-30 "77") ──────
-      # Liest infra/ports.yaml + infra/hosts.yaml aus platform (oeffentlich) und
+      # Liest ports.yaml + hosts.yaml (Auszug aus platform, spiegel/platform/) und
       # prueft VOR dem Deploy: ist der Dienst `aktiv`, und ist DIESER Runner-Host
       # der deklarierte prod_host? Anlass: coach-hub war stillgelegt deklariert und
       # wurde trotzdem auf prod deployt, wo es 25 h in einer Fehlerschleife lief.
@@ -383,10 +384,11 @@ jobs:
           ENVIRONMENT: production
         run: |
           set -u
-          B=https://raw.githubusercontent.com/achimdehnert/platform/main
+          # Spiegel statt platform: platform wird privat (platform#3596, #3234 K3)
+          B=https://raw.githubusercontent.com/iilgmbh/shared-ci/main/spiegel/platform
           D=$(mktemp -d)
-          for f in tools/deploy_preflight.py infra/ports.yaml infra/hosts.yaml; do
-            curl -fsSL --retry 3 "$B/$f" -o "$D/$(basename "$f")" || { echo "::error::Preflight: $f aus platform nicht ladbar — kein Deploy ohne Deklaration"; exit 2; }
+          for f in deploy_preflight.py ports.yaml hosts.yaml; do
+            curl -fsSL --retry 3 "$B/$f" -o "$D/$f" || { echo "::error::Preflight: $f aus dem Spiegel nicht ladbar — kein Deploy ohne Deklaration"; exit 2; }
           done
           python3 -c "import yaml" 2>/dev/null || pip install -q pyyaml
           HOST=$(hostname -I 2>/dev/null | awk '{print $1}')
