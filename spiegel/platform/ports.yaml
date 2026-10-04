@@ -5,15 +5,6 @@ services:
   apo-hub:
     prod_host: prod-b
   ausschreibungs-hub: {}
-  bahn-hub:
-    betriebsstatus: stillgelegt
-    betriebsstatus_grund: 'Owner-Entscheid 2026-09-07 (Kapitaens-Kanal, platform#2895
-      Item 49). Gemessen am 2026-09-07: bahn.iil.pet antwortet am Cloudflare-Edge
-      520 (Origin nicht erreichbar), auf prod kein nginx-vhost, kein Tunnel-Ingress
-      in /etc/cloudflared/config.yml, kein Container bahn_hub_* auf prod, prod-b oder
-      odoo; Runner-Phase 0.7.11 meldete route-ohne-backend seit 2026-08-23 (71 Laeufe),
-      0.7.16 fallback-zertifikat seit 2026-08-31. Reste (DNS-Record, Repo, Deploy-Gate
-      im Repo) offen — siehe platform#2895.'
   billing-hub: {}
   buerger-hub:
     betriebsstatus: blockiert
@@ -28,18 +19,6 @@ services:
   chathub-rtc-livekit-7881:
     prod_host: prod-b
   chathub-rtc-livekit-7882:
-    prod_host: prod-b
-  coach-hub:
-    betriebsstatus: stillgelegt
-    betriebsstatus_grund: 'Owner-Entscheid 2026-08-23 (platform#2215), bestaetigt
-      2026-08-30. Auf prod-b seit ~2026-08-20 alle 5 Container Exited(0). Auf prod
-      lief bis 2026-08-30 ein zweiter Stack weiter (25 h, coach_hub_web in Dauerschleife
-      DB not ready; Ursache im DB-Log: role coach_hub_app existiert dort nicht) —
-      gestoppt mit restart=no, Volumes bleiben. Die vier vhosts coach-hub.iil.pet,
-      kiohnerisiko.de, staging-coaching.iil.pet, staging.kiohnerisiko.de auf prod
-      deaktiviert (/root/stillgelegt-vhosts-2026-08-30/), der prod-b-vhost war bereits
-      weg. 14 Tage nginx: coach-hub.iil.pet 5, kiohnerisiko.de 681 Requests — alle
-      Status 444, kein Nutzerverkehr. Reste (DNS, Runner, Volumes, Repo): platform#2480'
     prod_host: prod-b
   decks-hub: {}
   dev-hub: {}
@@ -164,15 +143,6 @@ services:
 
       '
     prod_host: gx10
-  onboarding-hub:
-    betriebsstatus: stillgelegt
-    betriebsstatus_grund: 'Owner-Entscheid 2026-09-07 (Kapitaens-Kanal, platform#2895
-      Item 50). Gemessen am 2026-09-07: kein Container onboarding_hub_* auf prod,
-      prod-b, odoo, staging-dedicated, netcup (docker ps -a); auf prod kein nginx-vhost
-      und kein Tunnel-Ingress fuer schulungspass.de; die Domain antwortet nur mit
-      dem Cloudflare-Access-Login (302), dahinter kein Origin. Runner-Phase 0.7.16
-      meldete fallback-zertifikat seit 2026-08-25. Reste (Cloudflare-Access-App, DNS,
-      Repo) offen — siehe platform#2895.'
   post-hub:
     betriebsstatus: blockiert
     betriebsstatus_grund: Repo am 2026-09-11 angelegt (PostAssist-Host, meiki-lra);
@@ -208,10 +178,6 @@ services:
 
       '
     prod_host: prod
-  recruiting-hub:
-    betriebsstatus: stillgelegt
-    betriebsstatus_grund: GitHub-Repo archiviert (gh api repos/achimdehnert/recruiting-hub
-      .archived = true, seit ~2026-08-20); hr.iil.pet antwortet 502, das ist gewollt
   research-hub:
     prod_host: prod-b
   risk-hub: {}
@@ -261,16 +227,6 @@ services:
 
       '
     prod_host: gx10
-  wedding-hub:
-    betriebsstatus: stillgelegt
-    betriebsstatus_grund: 'Owner-Entscheid 2026-08-30 (nicht mehr aktiv), Reste platform#2480.
-      Ausgefuehrt: 5 Container auf prod-b gestoppt mit restart=no, Volumes bleiben;
-      DB-Dump /opt/backups/stilllegung-2026-08-30/wedding_hub_db.sql.gz (42 Tabellen,
-      Kontrollprobe 42/42); vhost auf prod-b und die beiden Rest-vhosts auf prod nach
-      /root/stillgelegt-vhosts-2026-08-30/. Gemessen 14 Tage nginx: 62 Requests, davon
-      25x 200 ausschliesslich auf /accounts/login/, keine Anmeldung, UA u.a. CMS-Checker.
-      Cloudflare-Route/DNS steht noch (heute 502), Runner und Volumes ebenfalls.'
-    prod_host: prod-b
   weltenhub:
     prod_host: prod-b
   writing-hub:
