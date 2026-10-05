@@ -7,6 +7,7 @@ gemergt oder getaggt werden darf, steht neben dem, was durchgeht.
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,8 @@ def pr(**felder) -> dict:
         "isDraft": False,
         "mergeable": "MERGEABLE",
         "statusCheckRollup": [{"name": "Validate Syntax", "conclusion": "SUCCESS"}],
+        # Echter Zeitpunkt von shared-ci#92 — liegt laengst ueber dem Mindestalter.
+        "createdAt": "2026-09-24T04:14:45Z",
     }
     grund.update(felder)
     return grund
@@ -77,6 +80,20 @@ def test_should_reject_major_bump():
     neu = NEU.replace("# v4.38.1", "# v5.0.0")
     gruende = versionszeilen_pruefen(patch(ALT, neu))
     assert gruende and "Hauptversion" in gruende[0]
+
+
+def test_should_reject_minor_bump_below_1_0():
+    # trivy-action steht auf v0.36.0: unter 1.0 darf schon der Minor brechen.
+    alt = "        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0"
+    neu = "        uses: aquasecurity/trivy-action@1111111111111111111111111111111111111111 # v0.37.0"
+    gruende = versionszeilen_pruefen(patch(alt, neu))
+    assert gruende and "Hauptversion" in gruende[0]
+
+
+def test_should_accept_patch_bump_below_1_0():
+    alt = "        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0"
+    neu = "        uses: aquasecurity/trivy-action@1111111111111111111111111111111111111111 # v0.36.1"
+    assert versionszeilen_pruefen(patch(alt, neu)) == []
 
 
 def test_should_reject_missing_version_comment():
@@ -153,6 +170,28 @@ def test_should_reject_pending_check():
 def test_should_reject_red_check():
     rot = {"name": "Validate Syntax", "conclusion": "FAILURE"}
     assert pr_pruefen(pr(statusCheckRollup=[rot]))
+
+
+def test_should_reject_pr_younger_than_mindestalter():
+    jetzt = datetime(2026, 9, 30, 4, 14, tzinfo=timezone.utc)
+    gruende = pr_pruefen(pr(), jetzt=jetzt)
+    assert gruende and "juenger als" in gruende[0]
+
+
+def test_should_accept_pr_at_mindestalter():
+    jetzt = datetime(2026, 10, 1, 4, 14, 45, tzinfo=timezone.utc)
+    assert pr_pruefen(pr(), jetzt=jetzt) == []
+
+
+def test_should_reject_unreadable_created_at():
+    assert pr_pruefen(pr(createdAt=None))
+
+
+def test_should_abort_when_pr_list_hits_limit(monkeypatch):
+    voll = [pr(number=n) for n in range(auto_release.PR_LIMIT)]
+    monkeypatch.setattr(auto_release, "gh", lambda *a, eingabe=None: voll)
+    with pytest.raises(RuntimeError, match="Limit"):
+        auto_release.offene_dependabot_prs("iilgmbh/shared-ci")
 
 
 # ── Tags ────────────────────────────────────────────────────────────────────
