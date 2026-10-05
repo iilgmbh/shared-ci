@@ -1,0 +1,71 @@
+name: "Auto-Release Action-Versionen"
+
+# Merged gruene Dependabot-Bumps fremder Actions und setzt danach den naechsten
+# Patch-Tag (platform#3775, Owner-Go 2026-10-05 "weg 2 ist ok go").
+#
+# Anlass: Jeder Action-Bump liess die Drift-Pruefung in jedem aufrufenden Repo
+# einen Error melden, bis hier von Hand gemergt und getaggt war — ein Handgriff
+# ohne Entscheidung. Was eine Entscheidung braucht, bleibt liegen und nennt den
+# Grund im Log: Hauptversions-Spruenge, eigene Actions, jede andere Zeile, und
+# ein Release, sobald zwischen Tag und main mehr als Versionszeilen liegt. Die
+# Regeln stehen in tools/auto_release.py und sind dort getestet.
+#
+# Schreibrecht nur im geplanten bzw. von Hand gestarteten Lauf auf main. Jeder
+# PR, der Werkzeug oder Workflow aendert, laeuft vorher trocken gegen das echte
+# Repo — das Protokoll zeigt, was der scharfe Lauf taete.
+#
+# Hinweis: Merges und Tags mit GITHUB_TOKEN loesen keine weiteren Workflows aus.
+# Die Checks am Dependabot-PR sind deshalb die einzige Pruefung vor dem Tag.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Nur anzeigen, nichts mergen oder taggen"
+        type: boolean
+        default: true
+  pull_request:
+    paths:
+      - "tools/auto_release.py"
+      - "tools/bot_review_kandidaten.py"
+      - ".github/workflows/auto-release.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  trocken:
+    name: "Auto-Release (Trockenlauf)"
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: python3 tools/auto_release.py --repo "$GITHUB_REPOSITORY" --dry-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  scharf:
+    name: "Auto-Release"
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: python3 tools/auto_release.py --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
