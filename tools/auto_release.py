@@ -11,9 +11,10 @@ gibt.
 
 Was dieses Werkzeug anfasst, ist bewusst eng:
 
-* **Merge** nur, wenn der PR von Dependabot stammt, kein Entwurf ist, alle
-  Checks gruen sind (mindestens einer) und jede geaenderte Zeile eine
-  `uses:`-Zeile einer **fremden** Action ist, deren Hauptversion gleich bleibt.
+* **Merge** nur, wenn der PR von Dependabot stammt, kein Entwurf ist, seit
+  mindestens `MINDESTALTER` offen liegt, alle Checks gruen sind (mindestens
+  einer) und jede geaenderte Zeile eine `uses:`-Zeile einer **fremden** Action
+  ist, deren Hauptversion gleich bleibt (unter 1.0 zaehlt der Minor mit).
   Eigene Actions (`achimdehnert/`, `iilgmbh/`, ...) bleiben Mensch: ein Bump
   dort holt ungeprueften Code aus einem anderen Repo herein.
 * **Tag** nur, wenn alles zwischen dem neuesten Tag und `main` dieselbe Pruefung
@@ -36,6 +37,7 @@ import json
 import re
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -58,11 +60,32 @@ USES = re.compile(
 )
 TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
+#: So lange liegt ein Bump, bevor er automatisch gemergt wird. Ein
+#: kompromittiertes Upstream-Release faellt meist binnen Tagen auf (trivy-action
+#: 2026-03, GHSA-69fq-xp46-6x23); ohne Wartezeit waere es am naechsten Morgen
+#: gemergt und getaggt. Dependabots eigenes `cooldown` kennt das Oekosystem
+#: github-actions nicht, darum steht die Frist hier (Retro 728cf0 #15).
+MINDESTALTER = timedelta(days=7)
+
+#: Obergrenze fuer `gh pr list`. Wird sie erreicht, ist die Liste womoeglich
+#: abgeschnitten — dann bricht der Lauf ab, statt still einen Teil zu sehen.
+PR_LIMIT = 100
+
 
 def hauptversion(version: str | None) -> str | None:
+    """Der Teil der Version, dessen Wechsel die Schnittstelle brechen darf.
+
+    Unter 1.0 erlaubt SemVer Brueche schon im Minor — `v0.36.0 -> v0.37.0` ist
+    dort ein Hauptversions-Sprung (trivy-action, Retro 728cf0 #11).
+    """
     if not version:
         return None
-    return version.lstrip("v").split(".")[0] or None
+    teile = version.lstrip("v").split(".")
+    if not teile[0]:
+        return None
+    if teile[0] == "0":
+        return ".".join(teile[:2])
+    return teile[0]
 
 
 def versionszeilen_pruefen(patch: str | None) -> list[str]:
@@ -123,7 +146,7 @@ def dateien_pruefen(dateien: list[dict]) -> list[str]:
     return gruende
 
 
-def pr_pruefen(pr: dict) -> list[str]:
+def pr_pruefen(pr: dict, jetzt: datetime | None = None) -> list[str]:
     """Gruende aus den PR-Metadaten (`gh pr list --json`), leer = weiter pruefen."""
     gruende: list[str] = []
     login = (pr.get("author") or {}).get("login")
@@ -131,6 +154,13 @@ def pr_pruefen(pr: dict) -> list[str]:
         gruende.append(f"Autor {login} ist nicht Dependabot")
     if pr.get("isDraft"):
         gruende.append("Entwurf")
+    try:
+        erstellt = datetime.fromisoformat(pr["createdAt"].replace("Z", "+00:00"))
+    except (KeyError, AttributeError, ValueError):
+        gruende.append(f"Erstellzeit nicht lesbar: {pr.get('createdAt')}")
+    else:
+        if (jetzt or datetime.now(timezone.utc)) - erstellt < MINDESTALTER:
+            gruende.append(f"juenger als {MINDESTALTER.days} Tage (seit {erstellt:%Y-%m-%d})")
     if pr.get("mergeable") != "MERGEABLE":
         gruende.append(f"mergeable={pr.get('mergeable')}")
     checks = pr.get("statusCheckRollup") or []
@@ -173,10 +203,14 @@ def gh(*args: str, eingabe: dict | None = None) -> object:
 
 
 def offene_dependabot_prs(repo: str) -> list[dict]:
-    return gh(
+    prs = gh(
         "pr", "list", "--repo", repo, "--state", "open", "--author", "app/dependabot",
-        "--json", "number,title,author,isDraft,mergeable,headRefOid,statusCheckRollup",
+        "--limit", str(PR_LIMIT),
+        "--json", "number,title,author,isDraft,mergeable,headRefOid,statusCheckRollup,createdAt",
     )
+    if len(prs) >= PR_LIMIT:
+        raise RuntimeError(f"{len(prs)} offene Dependabot-PRs erreichen das Limit {PR_LIMIT}")
+    return prs
 
 
 def pr_dateien(repo: str, nummer: int) -> list[dict]:
