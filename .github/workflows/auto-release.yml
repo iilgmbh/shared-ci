@@ -14,8 +14,13 @@ name: "Auto-Release Action-Versionen"
 # PR, der Werkzeug oder Workflow aendert, laeuft vorher trocken gegen das echte
 # Repo — das Protokoll zeigt, was der scharfe Lauf taete.
 #
-# Hinweis: Merges und Tags mit GITHUB_TOKEN loesen keine weiteren Workflows aus.
-# Die Checks am Dependabot-PR sind deshalb die einzige Pruefung vor dem Tag.
+# Der scharfe Lauf schreibt mit dem Token der App `iilgmbh-auto-release`, nicht
+# mit GITHUB_TOKEN: Action-Bumps aendern nur Dateien unter .github/workflows/,
+# und dafuer braucht es das Recht `workflows`, das GITHUB_TOKEN nie bekommt. Der
+# erste scharfe Lauf am 2026-10-06 scheiterte genau daran (shared-ci#96, HTTP 403).
+# Die App ist nur auf diesem Repo installiert, das Token lebt eine Stunde und
+# wird am Jobende widerrufen. Anders als bei GITHUB_TOKEN loest der Merge die
+# push-Workflows auf main aus.
 
 on:
   schedule:
@@ -50,6 +55,13 @@ jobs:
       pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Probe der Kette App-ID, Schluessel und Installation, nur mit Leserecht.
+      # Das Schreibrecht zeigt erst der scharfe Lauf.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.AUTO_RELEASE_APP_ID }}
+          private-key: ${{ secrets.AUTO_RELEASE_APP_KEY }}
+          permission-contents: read
       - run: python3 tools/auto_release.py --repo "$GITHUB_REPOSITORY" --dry-run
         env:
           GH_TOKEN: ${{ github.token }}
@@ -62,10 +74,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.AUTO_RELEASE_APP_ID }}
+          private-key: ${{ secrets.AUTO_RELEASE_APP_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
       - run: python3 tools/auto_release.py --repo "$GITHUB_REPOSITORY"
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
