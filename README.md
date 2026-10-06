@@ -7,6 +7,12 @@ andere Repo) frei umziehen kann, ohne `uses:`-Refs zu brechen.
 **Konsumenten pinnen auf einen Tag** (`@v1.0.0`), NICHT `@main` (Supply-Chain).
 Updates laufen über Dependabot (`github-actions`). Design: `platform/docs/runbooks/KONZ-002-ootb-a-shared-ci.md`.
 
+**Auto-Release** (`auto-release.yml`, täglich): grüne Dependabot-Bumps fremder Actions
+ohne Hauptversions-Sprung (unter 1.0 zählt der Minor mit) werden gemergt, sobald der PR
+sieben Tage offen liegt; danach wird der nächste Patch-Tag gesetzt —
+aber nur, wenn zwischen Tag und `main` ausschließlich solche Versionszeilen liegen.
+Alles andere bleibt liegen und nennt den Grund im Lauf-Protokoll (platform#3775).
+
 ## Setup — wie ein Repo diese Workflows einbindet
 
 ### 1. Aufruf
@@ -16,7 +22,7 @@ Ein Reusable-Workflow wird als **Job** eingebunden, nicht als Step:
 ```yaml
 jobs:
   ci:
-    uses: iilgmbh/shared-ci/.github/workflows/_ci-python.yml@v1.1.17
+    uses: iilgmbh/shared-ci/.github/workflows/_ci-python.yml@v1.1.24
     with:
       django_settings_module: "config.settings.test"
       coverage_threshold: 80
@@ -91,7 +97,7 @@ Alle übrigen Eingaben haben Vorgabewerte. Die vollständige Liste steht im
 
 ### 4. Aktuell und bleiben
 
-Der neueste Tag ist `v1.1.17`. Updates laufen über Dependabot; dafür braucht das
+Der neueste Tag ist `v1.1.24`. Updates laufen über Dependabot; dafür braucht das
 aufrufende Repo eine `.github/dependabot.yml` mit `package-ecosystem:
 "github-actions"`.
 

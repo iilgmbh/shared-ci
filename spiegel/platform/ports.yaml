@@ -1,0 +1,233 @@
+# GENERIERT von achimdehnert/platform tools/preflight_spiegel.py — nicht editieren.
+# Minimalauszug fuer den Deploy-Preflight (platform#3596); Quelle: platform infra/ports.yaml.
+services:
+  137-hub: {}
+  apo-hub:
+    prod_host: prod-b
+  ausschreibungs-hub: {}
+  billing-hub: {}
+  buerger-hub:
+    betriebsstatus: blockiert
+    betriebsstatus_grund: Repo am 2026-09-24 angelegt (Bürgerverzeichnis-Dienst je
+      Haus, core:ADR-003, meiki-lra); Staging auf dem Dev-Desktop nur loopback mit
+      synthetischem Bestand (meiki-hub#494 K3); Prod blockiert wie post-/schreib-/frist-hub;
+      buerger-hub.iil.pet hat bewusst keinen DNS-Eintrag
+  cad-hub:
+    prod_host: prod-b
+  chat-hub:
+    prod_host: prod-b
+  chathub-rtc-livekit-7881:
+    prod_host: prod-b
+  chathub-rtc-livekit-7882:
+    prod_host: prod-b
+  decks-hub: {}
+  dev-hub: {}
+  dms-hub:
+    prod_host: prod-b
+  doc-hub: {}
+  embedder:
+    betriebsstatus: aktiv
+    betriebsstatus_grund: 'Embedder nach ADR-188 (multilingual-e5-large, 1024 Dimensionen),
+      seit 2026-09-01 als systemd-Nutzerdienst auf der GX10, auf der GB10-GPU (cuda:0).
+      Gebunden auf 10.99.0.4:8100 — NICHT 0.0.0.0; gegengeprueft am Knoten. Erreichbar
+      nur ueber wg0, damit `oeffentlicher_ingress: false` gilt. Von der ganzen Flotte
+      ist nur prod im wg0 — gemessen, nicht angenommen. Verbraucher: `rag-mcp` auf
+      prod (siehe unten), seit 2026-09-01 im Betrieb; dessen /healthz/ prueft diesen
+      Dienst mit.
+
+      '
+    prod_host: gx10
+  frist-hub:
+    betriebsstatus: blockiert
+    betriebsstatus_grund: prod blockiert auf Hosting-ADR (meiki-lra Sozialdaten-Pilot)
+      — nur Konzept-Staging; frist-hub.iil.pet hat bewusst keinen DNS-Eintrag
+  gpu-ollama:
+    betriebsstatus: blockiert
+    betriebsstatus_grund: 'ollama auf der RTX-4090-Box, veroeffentlicht ueber gpu.iil.pet
+      hinter Cloudflare Access (Owner-Entscheid 2026-09-02, platform#2486 Punkt 2).
+      Nachgetragen 2026-09-08 aus demselben Grund wie `ollama`: die Ausnahme `gpu-ollama`
+      in hosts.yaml war ohne diesen Eintrag unlesbar fuer den Melder. Seit 2026-09-24
+      `blockiert` statt `aktiv` (platform#3471, #3115): die GPU-Box laeuft nach Owner-Entscheid
+      2026-08-31 nur auf Zuruf (Deklaration `auf_zuruf`, governance/deklarationen.json),
+      der Origin hinter dem Tunnel hat keinen messbaren TLS-Port — `origin_tls_melder.py`
+      las hier `aktiv`, mass ins Leere und meldete 41 Sitzungsstarts lang "nicht-messbar",
+      obwohl der infra:-Eintrag derselben Datei laengst `blockiert` sagte. Zwei Eintraege,
+      ein Dienst: #3422.
+
+      '
+    prod_host: gpu-box
+  illustration-hub:
+    prod_host: prod
+  kev-decisions:
+    betriebsstatus: aktiv
+    betriebsstatus_grund: 'Entscheidungsmodell `jaredpalmer/kev-4b` fuer die Messreihe
+      aus platform#3337, serviert ueber die System-One-Schnittstelle als systemd-Nutzerdienst
+      `kev.service` (Linger aktiv, ueberlebt Neustart). Bindet ausschliesslich auf
+      127.0.0.1 — kein Ingress, auch nicht aus wg0, deshalb kein prod-Port und keine
+      Domain. Umgezogen am 2026-09-21 von der gpu-box hierher (Owner-Frage "wieso
+      4090 und nicht gx10?"). Der Knoten ist der erklaerte Inferenzknoten; die 4090
+      traegt daneben den CI-Runner ci-gpu und hat nur 24 GB. Freigegeben wurden dort
+      21 GB (22 -> 3,4 GB belegt). Speicherlage nach dem Umzug, gemessen: kev haelt
+      18,2 GB. Der Knoten traegt ausserdem vLLM (37,5 GB), ollama, embedder und whisper-server
+      — 121 GB gesamt, 68 belegt, 53 verfuegbar. Unified Memory: `frei` und `verfuegbar`
+      weichen stark ab, die 53 sind die belastbare Zahl. Vor grossen Trainingslaeufen
+      anhalten: `systemctl --user stop kev`.
+
+      '
+    prod_host: gx10
+  learn-hub: {}
+  lotse-raum:
+    betriebsstatus: aktiv
+    betriebsstatus_grund: 'Lotse im Raum "Achim / Lotse" (chat-hub#48, KONZ-platform-059
+      Auftragsraum, KONZ-platform-060 Stimme). Zweites Geraet des Lotsen-Kontos mit
+      eigenem Krypto-Store unter ~/.local/share/chat-hub/lotse-achim — deshalb an
+      den dev-desktop gebunden. Bestandteile ohne Port: STT faster-whisper `small`
+      (CPU, deploy/stt.py) und TTS Piper `de_DE-thorsten-medium` (CPU, deploy/tts.py,
+      chat-hub#117); keine Route zur gx10, gemessen 2026-09-22. Kein Container, kein
+      Ingress. Laeuft auf dem dev-desktop per benannter, befristeter Ausnahme in hosts.yaml
+      (Owner-Wort 2026-09-22, bis 2026-12-01, derselbe Fall wie mail-links, platform#2507).
+      Bis 2026-09-22 in keiner SoT deklariert.
+
+      '
+    prod_host: dev-desktop
+  mail-links:
+    betriebsstatus: blockiert
+    betriebsstatus_grund: 'laeuft auf dev-desktop gegen auflage.prod_container=false
+      (Owner-Entscheid ADR-257/ADR-292). Bis 2026-08-30 in keiner SoT — unsichtbar
+      fuer jeden Melder. Deklariert als blockiert (platform#2507, Owner-Go 164): deklarieren/umziehen/stoppen
+      je Zeile noch offen; blockiert = laeuft, aber ohne Deploy-Recht und ausserhalb
+      der Erreichbarkeits-Pruefung.'
+    prod_host: dev-desktop
+  mcp-hub:
+    betriebsstatus: aktiv
+    betriebsstatus_grund: 'Schluessel = app_name aus mcp-hub deploy.yml, damit der
+      Deploy-Preflight ihn prueft statt als Scope-Luecke durchzuwinken (mcp-hub#279).
+      Am Knoten 2026-09-23 gegengeprueft: Projekt mcp-hub = orchestrator_http, db,
+      rag, Listener 127.0.0.1:8000 und :15435 (DB). vllm:8000 liegt auf gx10, nicht
+      auf prod. llm_gateway/Grafana (llm-mcp) laufen NICHT auf prod.
+
+      '
+    prod_host: prod
+  mon-cadvisor-prod:
+    prod_host: prod
+  mon-cadvisor-prod-b:
+    prod_host: prod-b
+  news-hub:
+    betriebsstatus: aktiv
+    betriebsstatus_grund: 'Owner-Freigabe 2026-09-09 (news-hub#3): DNS-CNAME news.iil.pet
+      auf den Prod-Tunnel gesetzt (wie knowledge.iil.pet), nginx-Vhost auf 127.0.0.1:8113,
+      Umgebungsdatei auf dem Server angelegt, Deploy-Secrets DEPLOY_HOST/USER/SSH_KEY
+      im Repo, eigener CI-Schluessel news-hub-ci-deploy auf dem Prod-Host. Deploy
+      bleibt auf workflow_dispatch, bis der erste echte Tageslauf steht'
+  odoo:
+    betriebsstatus: ruhend
+    betriebsstatus_grund: 'Owner-Entscheid 2026-08-30 (#160): bis auf weiteres still.
+      pg_dumpall (odoo 84 MB, aifw 9 MB) nach /opt/backups/stilllegung-2026-08-30/
+      auf dem odoo-Host; odoo_web + odoo_db gestoppt mit restart=no, Filestore-Volume
+      odoo_hub_data bleibt. Monitoring-Stack auf demselben Host laeuft weiter (Prometheus
+      = Flotten-Monitor seit KONZ-054 A2). odoo-hub#22: Auto-Deploy bei Push abgeschaltet.
+      Reste (odoo.iil.pet 520, aifw_service, Repo): platform#2480'
+    prod_host: odoo
+  odoo-traefik-http:
+    prod_host: odoo
+  odoo-traefik-https:
+    prod_host: odoo
+  ollama:
+    betriebsstatus: aktiv
+    betriebsstatus_grund: 'Inferenzdienst auf der GB10, gebunden auf 10.99.0.4:11434
+      (nicht 0.0.0.0). Bis 2026-09-08 stand er nur als `auflage.ausnahmen`-Eintrag
+      in hosts.yaml — und blieb damit ungelesen: `hosts_audit.check_auflage` iteriert
+      `ports["services"]`, `_ausnahme_fuer` matcht den Dienstnamen. Ohne diesen Eintrag
+      greift die Ausnahme nicht. Verbraucher: mcp-hub (llm_mcp, orchestrator_mcp),
+      iil-voice-agent.
+
+      '
+    prod_host: gx10
+  post-hub:
+    betriebsstatus: blockiert
+    betriebsstatus_grund: Repo am 2026-09-11 angelegt (PostAssist-Host, meiki-lra);
+      noch kein Code, kein Deploy — Prod erst nach Hosting-Entscheid wie frist-hub;
+      post-hub.iil.pet hat bewusst keinen DNS-Eintrag
+  pptx-hub:
+    prod_host: prod-b
+  praes-iil-ai:
+    betriebsstatus: ruhend
+    betriebsstatus_grund: 'Owner-Entscheid 2026-09-04 (platform#2507): Ziel ist prod-b,
+      Deploy dorthin noch offen. Auf dev-desktop laeuft NICHTS mehr — am Knoten selbst
+      geprueft: kein Container unter 37 laufenden, auch keiner gestoppt (Positivkontrolle:
+      20 gestoppte werden gelistet), Port 8120 lauscht nicht. Der Tunnel gehoerte
+      zum selben Compose und ist mit ihm weg. Die HTTP 302 von praes.iil.ai ist die
+      Cloudflare-Access-Weiterleitung am Rand und sagt nichts ueber den Ursprung.
+      Damit war der Dauer-Befund des Hosts-Audits (10 Laeufe rot seit 2026-09-02)
+      ein DEKLARATIONS-Fehler, kein Betriebsverstoss. Reste: zwei Images auf dev-desktop
+      entfernt 2026-09-04; DNS-Route + Access-Anwendung bei Cloudflare bleiben, bis
+      der Deploy auf prod-b steht (sonst zeigt der Hostname eine Anmeldemaske ohne
+      Dienst dahinter).
+
+      '
+    prod_host: prod-b
+  rag-mcp:
+    betriebsstatus: aktiv
+    betriebsstatus_grund: 'RAG-API nach ADR-171 (Chunking, Embedding, hybride Suche),
+      seit 2026-09-01 auf prod (mcp-hub#238). Nur 127.0.0.1:8200, kein Tunnel — am
+      Knoten gegengeprueft: 0 Listener ausserhalb Loopback. /healthz/ prueft Datenbank
+      UND Embedder; der Container-Healthcheck bewusst nur /livez/, sonst wuerde ein
+      GX10-Ausfall den gesunden Container neu starten. Der Embedder (oben) ist nur
+      ueber wg0 erreichbar, und im wg0 ist von der Flotte nur prod — dieser Dienst
+      kann auf keinem anderen Knoten laufen.
+
+      '
+    prod_host: prod
+  research-hub:
+    prod_host: prod-b
+  risk-hub: {}
+  robo-twin:
+    betriebsstatus: blockiert
+    betriebsstatus_grund: 'laeuft auf dev-desktop gegen auflage.prod_container=false
+      (Owner-Entscheid ADR-257/ADR-292). Bis 2026-08-30 in keiner SoT — unsichtbar
+      fuer jeden Melder. Deklariert als blockiert (platform#2507, Owner-Go 164): deklarieren/umziehen/stoppen
+      je Zeile noch offen; blockiert = laeuft, aber ohne Deploy-Recht und ausserhalb
+      der Erreichbarkeits-Pruefung.'
+    prod_host: dev-desktop
+  schreib-hub:
+    betriebsstatus: blockiert
+    betriebsstatus_grund: Repo am 2026-09-12 angelegt (SchreibAssist-Host, meiki-lra);
+      noch kein Code, kein Deploy — Prod erst nach Hosting-Entscheid wie frist-hub;
+      schreib-hub.iil.pet hat bewusst keinen DNS-Eintrag
+  tax-hub: {}
+  todo-board:
+    betriebsstatus: blockiert
+    betriebsstatus_grund: Arbeitsliste aus dem Vorgangs-Ledger, laeuft wie mail-links
+      auf dev-desktop gegen auflage.prod_container=false (Owner-Entscheid ADR-257/ADR-292);
+      bis 2026-09-10 in keiner SoT — todo.iil.pet war als Alias von mail-links (8787)
+      gefuehrt, der Tunnel leitet aber auf 8789. blockiert = laeuft, aber ohne Deploy-Recht
+      und ausserhalb der Erreichbarkeits-Pruefung (platform#3015).
+    prod_host: dev-desktop
+  trading-hub:
+    prod_host: prod-b
+  travel-beat:
+    betriebsstatus: stillgelegt
+    betriebsstatus_grund: 'Owner-Entscheid 2026-08-30 (#120), Reste platform#2480.
+      Ausgefuehrt: 6 Container auf prod gestoppt mit restart=no, Dump /opt/backups/stilllegung-2026-08-30/travel_beat_db.sql.gz
+      (Kontrollprobe Tabellen Dump = DB), 6 vhosts (drifttales.*, travel-beat.iil.pet,
+      travel.schutztat.de) nach /root/stillgelegt-vhosts-2026-08-30/, Backup-Cron
+      auskommentiert. Gemessen 14 Tage nginx: 3878 Zeilen, 0 Login-Erfolge, alle POSTs
+      WordPress-Sonden, 396 Ein-Treffer-IPs ohne Referrer — Scanner, keine Nutzer.
+      DNS/Cloudflare, Runner, Volumes stehen noch.'
+  vllm:
+    betriebsstatus: aktiv
+    betriebsstatus_grund: 'Durchsatz-Motor neben ollama, seit 2026-09-08 (platform#2544).
+      Gebunden auf 10.99.0.4:8000, gleiche Bindung wie ollama.service. Gemessen mit
+      demselben Harnisch: 3.526 tok/s Prefill bei 8 gleichzeitigen Anfragen gegen
+      2.632 tok/s bei ollama. Haelt rund 36 GB Grafikspeicher — vor grossen Trainingslaeufen
+      anhalten (`systemctl --user stop vllm`, Wrapper `infra/scripts/training-mit-speicher.sh`
+      — im Repo, auf dem Knoten als `~/training-mit-speicher.sh` ausgerollt, robo-lab#58).
+      Port 8000 liegt im Band 8000-8019 (Infra-APIs); auf gx10 frei, die Belegung
+      auf gpu-box (ComfyUI) ist ein anderer Knoten.
+
+      '
+    prod_host: gx10
+  weltenhub:
+    prod_host: prod-b
+  writing-hub:
+    prod_host: prod
