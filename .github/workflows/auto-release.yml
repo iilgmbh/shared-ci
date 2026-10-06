@@ -55,11 +55,12 @@ jobs:
       pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      # Probe der Kette App-ID, Schluessel und Installation, nur mit Leserecht.
-      # Das Schreibrecht zeigt erst der scharfe Lauf.
+      # Probe der Kette Client-ID, Schluessel und Installation, nur mit
+      # Leserecht. Das Schreibrecht zeigt erst der scharfe Lauf. Die Client-ID
+      # ist kein Geheimnis und liegt deshalb als Variable vor (#100).
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.AUTO_RELEASE_APP_ID }}
+          client-id: ${{ vars.AUTO_RELEASE_CLIENT_ID }}
           private-key: ${{ secrets.AUTO_RELEASE_APP_KEY }}
           permission-contents: read
       - run: python3 tools/auto_release.py --repo "$GITHUB_REPOSITORY" --dry-run
@@ -80,7 +81,7 @@ jobs:
       - id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.AUTO_RELEASE_APP_ID }}
+          client-id: ${{ vars.AUTO_RELEASE_CLIENT_ID }}
           private-key: ${{ secrets.AUTO_RELEASE_APP_KEY }}
           permission-contents: write
           permission-pull-requests: write
