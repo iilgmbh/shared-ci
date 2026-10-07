@@ -1,0 +1,89 @@
+name: "Remote exec/copy via native ssh"
+description: |
+  Fuehrt ein Skript auf einem Host aus (script) oder kopiert Dateien dorthin
+  (source/target) — mit dem ssh des Runners, ohne Drittanbieter-Action
+  (shared-ci#88). Host-Schluessel werden gegen known_hosts bzw. einen
+  SHA256-Fingerabdruck gepinnt (StrictHostKeyChecking=yes). Semantik und
+  Details: remote-exec.sh im selben Verzeichnis.
+
+  Aus einem Reusable Workflow heraus IMMER per SHA referenzieren
+  (iilgmbh/shared-ci/.github/actions/remote-exec@<sha>), nie per ./ — ein
+  ./-Pfad zeigt dort auf den Checkout des aufrufenden Repos. Den Pin prueft
+  scripts/checks/deploy_remote_exec_check.sh.
+
+inputs:
+  host:
+    description: "Zielhost: host, host:port oder Kommaliste"
+    required: true
+  username:
+    description: "SSH-Benutzer"
+    required: true
+  key:
+    description: "Privater SSH-Schluessel (Inhalt, nicht Pfad)"
+    required: true
+  port:
+    description: "SSH-Port, wenn host keinen :port traegt"
+    required: false
+    default: "22"
+  fingerprint:
+    description: "SHA256-Fingerabdruck des Host-Schluessels (SHA256:…). Leer + known_hosts leer = Schluessel beim ersten Kontakt uebernehmen, mit Warnung"
+    required: false
+    default: ""
+  known_hosts:
+    description: "known_hosts-Zeilen fuer den Host (hat Vorrang vor fingerprint)"
+    required: false
+    default: ""
+  timeout:
+    description: "Timeout Verbindungsaufbau (Go-Dauer, z.B. 30s)"
+    required: false
+    default: "30s"
+  command_timeout:
+    description: "Laufzeitgrenze je Host (Go-Dauer, z.B. 10m); Ueberschreitung = Exit 124"
+    required: false
+    default: "10m"
+  script:
+    description: "exec: Skript, laeuft als ein Kommando in der Login-Shell des Zielbenutzers"
+    required: false
+    default: ""
+  envs:
+    description: "exec: Kommaliste von Umgebungsvariablen des Schritts, die remote exportiert werden"
+    required: false
+    default: ""
+  source:
+    description: "copy: Kommaliste von Dateien/Globs (!muster = ausschliessen)"
+    required: false
+    default: ""
+  target:
+    description: "copy: Zielverzeichnis (wird angelegt)"
+    required: false
+    default: ""
+  strip_components:
+    description: "copy: fuehrende Pfadteile beim Entpacken entfernen"
+    required: false
+    default: "0"
+  overwrite:
+    description: "copy: tar --overwrite beim Entpacken"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: remote-exec
+      shell: bash
+      env:
+        RX_HOST: ${{ inputs.host }}
+        RX_USER: ${{ inputs.username }}
+        RX_KEY: ${{ inputs.key }}
+        RX_PORT: ${{ inputs.port }}
+        RX_FINGERPRINT: ${{ inputs.fingerprint }}
+        RX_KNOWN_HOSTS: ${{ inputs.known_hosts }}
+        RX_TIMEOUT: ${{ inputs.timeout }}
+        RX_COMMAND_TIMEOUT: ${{ inputs.command_timeout }}
+        RX_SCRIPT: ${{ inputs.script }}
+        RX_ENVS: ${{ inputs.envs }}
+        RX_SOURCE: ${{ inputs.source }}
+        RX_TARGET: ${{ inputs.target }}
+        RX_STRIP_COMPONENTS: ${{ inputs.strip_components }}
+        RX_OVERWRITE: ${{ inputs.overwrite }}
+      run: bash "$GITHUB_ACTION_PATH/remote-exec.sh"
