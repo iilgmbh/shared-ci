@@ -355,9 +355,18 @@ jobs:
             # #86: Compose-Datei aus dem Repo übernehmen — validieren, sichern, ersetzen.
             # Vorher lag /opt/<app>/<compose> als Erst-Setup-Kopie da und driftete still
             # (apo-hub 2026-09-21: Volume + Env aus zwei grünen Deploys nie in Prod).
-            COMPOSE_NAME="$(basename "${{ inputs.compose_file }}")"
+            # Voller relativer Pfad, nicht basename: scp-action behaelt die Verzeichnisstruktur
+            # der Quelle bei, und deploy-remote.sh liest `--compose-file` relativ zu --deploy-dir.
+            COMPOSE_NAME="${{ inputs.compose_file }}"
+            case "$COMPOSE_NAME" in
+              /*|*..*) echo "::error::compose_file muss relativ und ohne '..' sein: $COMPOSE_NAME"; exit 1 ;;
+            esac
             INCOMING="${{ inputs.deploy_path }}/.incoming/${COMPOSE_NAME}"
             COMPOSE_HOST="${{ inputs.deploy_path }}/${COMPOSE_NAME}"
+            if [ ! -f "$INCOMING" ]; then
+              echo "::error::Compose-Datei nicht in .incoming angekommen ($INCOMING) — Deploy abgebrochen"
+              exit 1
+            fi
             if [ -f "$INCOMING" ]; then
               if [ -f "$COMPOSE_HOST" ] && cmp -s "$INCOMING" "$COMPOSE_HOST"; then
                 echo "Compose-Datei unverändert (${COMPOSE_NAME})"
