@@ -5,10 +5,10 @@ name: tools-tests
 
 on:
   pull_request:
-    paths: ["tools/**"]
+    paths: ["tools/**", ".github/actions/haus-literale/**", ".github/workflows/tools-tests.yml"]
   push:
     branches: [main]
-    paths: ["tools/**"]
+    paths: ["tools/**", ".github/actions/haus-literale/**", ".github/workflows/tools-tests.yml"]
 
 permissions:
   contents: read
@@ -23,5 +23,33 @@ jobs:
       - uses: actions/setup-python@v7.0.0
         with:
           python-version: "3.12"
-      - run: python3 -m pip install --quiet pytest
+      # pyyaml: tools/check_haus_literale.py liest seine Konfiguration als YAML.
+      - run: python3 -m pip install --quiet pytest pyyaml
       - run: python3 -m pytest tools/tests -q
+
+  haus-literale-action:
+    # Selbsttest der Composite-Action auf demselben Weg, den die Aufrufer gehen:
+    # ein stimmiger Bestand muss grün, ein neues Literal rot werden. Ohne den
+    # roten Lauf wäre ein blindes Gate von einem sauberen nicht zu unterscheiden.
+    name: "Action haus-literale: grün und rot"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: "Positivlauf: Bestand stimmt"
+        uses: ./.github/actions/haus-literale
+        with:
+          konfig: tools/tests/fixtures/haus-literale/gut.yml
+      - name: "Negativlauf: neues Literal"
+        id: negativ
+        # Weichgestellt, weil dieser Schritt rot werden SOLL; der nächste Schritt
+        # wertet sein outcome aus und macht den Job rot, falls er grün blieb.
+        continue-on-error: true
+        uses: ./.github/actions/haus-literale
+        with:
+          konfig: tools/tests/fixtures/haus-literale/leer.yml
+      - name: "Negativlauf muss rot gewesen sein"
+        if: steps.negativ.outcome != 'failure'
+        run: |
+          echo "::error title=haus-literale::Negativlauf war ${{ steps.negativ.outcome }} statt failure — Gate blind"
+          exit 1

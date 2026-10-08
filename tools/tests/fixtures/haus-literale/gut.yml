@@ -1,0 +1,8 @@
+# Selbsttest: Bestand stimmt mit dem Kanarienvogel überein ⇒ grün.
+format: haus-literale/1
+muster:
+  - name: kanarie
+    regex: 'Kanarienhaus'
+    beispiel: 'KANARIE = "Kanarienhaus"'
+dateien: ['tools/tests/fixtures/haus-literale/*.py']
+bestand_datei: tools/tests/fixtures/haus-literale/gut-bestand.yml

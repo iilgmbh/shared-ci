@@ -1,0 +1,34 @@
+# Composite Action: haus-literale
+#
+# Ratsche gegen Haus-Literale im Code (meiki-lra/meiki-hub#582, Schritt 7): Fach-
+# und Hausdaten gehören in Tabellen oder Datendateien. Der Prüfer lebt hier, die
+# Muster und der Bestand im aufrufenden Repo — was ein Haus-Literal ist, sind
+# Fachdaten des Aufrufers, nicht des CI-Kanons.
+#
+# Der Aufrufer MUSS vorher `actions/checkout` ausgeführt haben.
+name: "haus-literale"
+description: "Ratsche gegen Haus-Literale im Code — Muster und Bestand liegen im aufrufenden Repo"
+
+inputs:
+  konfig:
+    description: "Konfiguration (format haus-literale/1), relativ zur Repo-Wurzel"
+    required: false
+    default: ".github/haus-literale.yml"
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Haus-Literale gegen den Bestand"
+      shell: bash
+      env:
+        KONFIG: ${{ inputs.konfig }}
+      run: |
+        set -euo pipefail
+        pruefer="$(cd "${{ github.action_path }}/../../.." && pwd)/tools/check_haus_literale.py"
+        # Fehlt der Prüfer, wird das laut — ein stiller Übersprung wäre ein grünes Gate ohne Prüfung.
+        if [ ! -f "$pruefer" ]; then
+          echo "::error title=haus-literale::$pruefer nicht gefunden — Repo-Layout geändert?"
+          exit 1
+        fi
+        python3 -m pip install --quiet pyyaml
+        python3 "$pruefer" --wurzel "$GITHUB_WORKSPACE" --konfig "$KONFIG"

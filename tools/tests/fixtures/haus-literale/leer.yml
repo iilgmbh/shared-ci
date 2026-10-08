@@ -1,0 +1,8 @@
+# Selbsttest: leerer Bestand, der Kanarienvogel ist ein neues Literal ⇒ rot.
+format: haus-literale/1
+muster:
+  - name: kanarie
+    regex: 'Kanarienhaus'
+    beispiel: 'KANARIE = "Kanarienhaus"'
+dateien: ['tools/tests/fixtures/haus-literale/*.py']
+bestand_datei: tools/tests/fixtures/haus-literale/leer-bestand.yml
