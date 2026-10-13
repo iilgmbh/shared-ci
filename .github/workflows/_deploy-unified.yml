@@ -77,6 +77,15 @@ on:
         required: false
         type: string
         default: ""
+      erneut:
+        description: >-
+          true = Prod auch dann neu ausrollen, wenn dort schon genau dieses Image laeuft
+          (bewusster Re-Deploy, z. B. nach Host-Eingriff). Default false: die
+          Ist-Stand-Pruefung im Production-Job beendet einen Lauf ohne Wirkung, wenn
+          der Ziel-Stand schon live ist (platform KONZ-069 A1, platform#3890).
+        required: false
+        type: boolean
+        default: false
     secrets:
       DEPLOY_SSH_KEY:
         description: "SSH Key für Production (vorhandener Secret-Name)"
@@ -370,6 +379,34 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # ── Ist-Stand-Pruefung (platform KONZ-069 A1, platform#3890) ──────────────
+      # Laeuft in production schon genau das Ziel-Image, endet der Lauf ohne
+      # Wirkung. Anlass: ausschreibungs-hub 2026-10-12 — Push-Lauf und ein 17 s
+      # spaeter gestarteter Dispatch rollten denselben Commit zweimal aus.
+      # Quelle sind die iil.*-Labels, die deploy.sh je Service setzt (ADR-021
+      # §2.18); deploy.sh rollt bei rotem Health-Check zurueck, ein Label mit dem
+      # Ziel-Tag heisst also: dieser Stand ist live und gesund.
+      # Fail-open: keine Labels, kein Docker-Zugriff oder Remote-Runner = Deploy
+      # laeuft wie bisher. Ausgenommen: `erneut: true` und `image_tag_override`.
+      - name: "Ist-Stand-Pruefung (KONZ-069 A1)"
+        id: ist
+        if: ${{ !inputs.erneut && inputs.image_tag_override == '' && !startsWith(inputs.runs_on, 'ubuntu') }}
+        env:
+          APP: ${{ inputs.app_name }}
+          ZIEL: ${{ needs.resolve.outputs.image_tag }}
+        run: |
+          TAGS=$(docker ps --filter "label=iil.repo=${APP}" --filter "label=iil.environment=production" \
+                   --format '{{.Label "iil.image_tag"}}' 2>/dev/null | sort -u) || TAGS=""
+          if [ -z "$TAGS" ]; then
+            echo "Ist-Stand nicht lesbar (keine gelabelten Container) — Deploy laeuft normal."
+          elif [ "$TAGS" = "$ZIEL" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Ist-Stand::${APP} laeuft in production bereits auf ${ZIEL} — kein zweiter Rollout (erneut: true erzwingt ihn)"
+            echo "### Ist-Stand-Pruefung: ${ZIEL} ist schon live — Lauf ohne Wirkung beendet" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Ist: $(echo "$TAGS" | tr '\n' ' ')· Ziel: ${ZIEL} — Deploy laeuft."
+          fi
+
       # ── Deploy-Preflight (platform KONZ-054 E1, Owner-Go 2026-08-30 "77") ──────
       # Liest ports.yaml + hosts.yaml (Auszug aus platform, spiegel/platform/) und
       # prueft VOR dem Deploy: ist der Dienst `aktiv`, und ist DIESER Runner-Host
@@ -379,6 +416,7 @@ jobs:
       # ports.yaml) = Warnung, kein Block: eine Scope-Luecke darf nicht 23 Repos
       # anhalten, sie muss aber sichtbar sein — sie steht in der Job-Summary.
       - name: "Deploy-Preflight (platform ports.yaml/hosts.yaml)"
+        if: steps.ist.outputs.skip != 'true'
         env:
           APP: ${{ inputs.app_name }}
           ENVIRONMENT: production
@@ -430,6 +468,7 @@ jobs:
         # nicht mit (KONZ-015-Fehlerklasse: undeklarierte Host-Dateien).
       - name: Assert compose + write manifest + atomic sync (ADR-021 §2.17/§2.20)
         id: compose_sync
+        if: steps.ist.outputs.skip != 'true'
         run: |
           set -euo pipefail
 
@@ -532,7 +571,7 @@ jobs:
           overwrite: true
 
       - name: Deploy to production (direct — self-hosted runner)
-        if: ${{ !startsWith(inputs.runs_on, 'ubuntu') }}
+        if: ${{ !startsWith(inputs.runs_on, 'ubuntu') && steps.ist.outputs.skip != 'true' }}
         timeout-minutes: 15
         env:
           # Kurzlebiger Workflow-Token → deploy.sh loggt frisch bei GHCR ein.

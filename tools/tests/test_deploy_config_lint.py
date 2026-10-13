@@ -75,3 +75,24 @@ def test_should_still_flag_dispatch_default_production_despite_marker() -> None:
 def test_should_pass_clean_staging_default() -> None:
     staging = "      target_environment: ${{ inputs.target_environment || 'staging' }}\n"
     assert lint.lint_text("deploy.yml", staging) == []
+
+
+# --- Regel 3 (platform KONZ-069 A3): Fallbacks einer Datei stimmen ueberein ---
+CONCURRENCY_STAGING = "  group: deploy-x-${{ inputs.target_environment || 'staging' }}\n"
+CONCURRENCY_PROD = "  group: deploy-x-${{ inputs.target_environment || 'production' }}\n"
+
+
+def test_should_flag_disagreeing_fallbacks_even_with_marker() -> None:
+    # Realfall ausschreibungs-hub 2026-10-12: Concurrency staging, Job production
+    out = lint.lint_text("deploy.yml", MARKER + CONCURRENCY_STAGING + FALLBACK + HEALTH + REUSABLE)
+    assert len(out) == 1
+    assert "production, staging" in out[0]
+
+
+def test_should_accept_agreeing_production_fallbacks_with_marker() -> None:
+    assert lint.lint_text("deploy.yml", MARKER + CONCURRENCY_PROD + FALLBACK + HEALTH + REUSABLE) == []
+
+
+def test_should_ignore_fallbacks_that_live_only_in_comments() -> None:
+    alt = "# frueher: ${{ inputs.target_environment || 'staging' }}\n"
+    assert lint.lint_text("deploy.yml", MARKER + alt + FALLBACK + HEALTH + REUSABLE) == []
