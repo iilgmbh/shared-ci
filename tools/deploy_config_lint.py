@@ -18,6 +18,14 @@ entweder die Reusable `_deploy-unified.yml` (Health-Gate + Auto-Rollback in depl
 aufgerufen oder ein eigener Rollback-Schritt ausserhalb von Kommentaren vorhanden. Fehlt
 eines davon, bleibt der Marker wirkungslos und der Lint rot. Der Marker deckt nur
 Anti-Pattern 1; ein workflow_dispatch-Default 'production' bleibt immer ein Befund.
+Owner-Entscheid E-A5 (2026-10-13, platform#3890): push->main nach Prod mit
+Environment-Gate ist zulaessig — der Weg dafuer ist genau dieser Marker.
+
+Regel 3 (platform KONZ-069 A3): alle Fallbacks `inputs.target_environment || '<x>'`
+einer Datei muessen dasselbe Ziel nennen. Realfall ausschreibungs-hub 2026-10-12:
+die Concurrency-Gruppe fiel auf 'staging', der Deploy-Job auf 'production'. Push-
+und Dispatch-Lauf landeten so in verschiedenen Gruppen und rollten beide aus. Der
+Marker hebt Regel 3 nicht auf.
 
 Usage:
     python3 deploy_config_lint.py [<workflows-dir>]   # default .github/workflows
@@ -70,9 +78,19 @@ _INPUT_DEFAULT = re.compile(
 )
 
 
+# Regel 3: jeder Fallback auf target_environment, ob Concurrency, Job oder Step-Env.
+_ALLE_FALLBACKS = re.compile(r"""inputs\.target_environment\s*\|\|\s*['"]([\w-]+)['"]""")
+
+
 def lint_text(name: str, text: str) -> list[str]:
     """Findet Auto-Prod-Default-Anti-Pattern in einem Workflow-Text."""
     out: list[str] = []
+    ziele = sorted(set(_ALLE_FALLBACKS.findall(_ohne_kommentare(text))))
+    if len(ziele) > 1:
+        out.append(
+            f"{name}: Fallbacks von target_environment widersprechen sich ({', '.join(ziele)}) — "
+            "Concurrency-Gruppe und Deploy-Ziel brauchen denselben Default"
+        )
     greift, fehlt = marker_greift(text)
     for m in _FALLBACK.finditer(text):
         if greift:
