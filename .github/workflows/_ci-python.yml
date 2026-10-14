@@ -139,6 +139,21 @@ on:
         required: false
         default: false
         type: boolean
+      enable_review:
+        description: 'Opt-in: Review-Check Stufe 1 (Regel-Engine aus platform registry/review-regeln.yaml) als eigener Job auf PRs — Annotations mit Datei:Zeile, advisory. KONZ-platform-070 Z2, platform#3903 WP2. Default aus; Pilot = Liste L.'
+        required: false
+        default: false
+        type: boolean
+      review_profil:
+        description: 'Review-Profil des Repos fuer enable_review: default | deployed | library (Spalte profile in review-regeln.yaml).'
+        required: false
+        default: 'default'
+        type: string
+      review_blockieren:
+        description: 'enable_review: BLOCK-Befunde aus Inhalt/Umfang lassen den Review-Check fallen. Default false (advisory); Pfad-BLOCK bleibt immer nur Hinweis.'
+        required: false
+        default: false
+        type: boolean
     secrets:
       PROJECT_PAT:
         description: 'PAT for private git+https dependencies (pip install / pip-audit). Cross-org consumers (repo outside iilgmbh) MUST pass this explicitly — secrets: inherit does not deliver caller secrets across orgs (achimdehnert/platform#1158; same class as the deploy-job fix, platform#1067). Declaring it here is the prerequisite for explicit mapping; callers using secrets: inherit are unaffected.'
@@ -883,6 +898,16 @@ jobs:
             echo "FAIL: makemigrations --check — Model/Migration-Drift (fehlende Migration committen)"
             exit 1
           }
+
+  # Review-Check Stufe 1 (KONZ-platform-070 Z2, platform#3903 WP2): hinter Schalter,
+  # advisory, nicht Teil von gate — Befunde erscheinen als Annotations am PR.
+  review:
+    if: ${{ inputs.enable_review && github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/_review.yml
+    with:
+      profil: ${{ inputs.review_profil }}
+      blockieren: ${{ inputs.review_blockieren }}
+      runs_on: ${{ inputs.runs_on_light }}
 
   gate:
     name: "gate"

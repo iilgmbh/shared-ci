@@ -1,0 +1,24 @@
+# review-selftest.yml — CI-Dry-Run von _review.yml auf dem eigenen PR.
+#
+# Gate aus platform#3903 WP2: Aenderungen mit org-weitem Schreibrecht brauchen
+# Vier-Augen oder einen CI-Dry-Run vor dem Merge. Dieser Lauf prueft, dass der
+# Reusable Workflow auf einem echten PR durchlaeuft (Checkout, Engine, Artefakt),
+# advisory, ohne Wirkung auf Aufrufer. Aufrufer schalten ihn ueber _ci-python.yml
+# `enable_review` ein.
+name: review-selftest
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/_review.yml
+      - .github/workflows/review-selftest.yml
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    uses: ./.github/workflows/_review.yml
+    with:
+      profil: default
+      blockieren: false
