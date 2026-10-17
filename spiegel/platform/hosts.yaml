@@ -14,6 +14,10 @@ hosts:
     ip: 10.99.0.4
     hostname: gx10-5dd6
     ssh: 10.99.0.4
+  ionos-sandbox:
+    ip: 87.106.239.66
+    hostname: ubuntu
+    ssh: 87.106.239.66
   odoo:
     ip: 46.225.127.211
     ssh_alias: hetzner-odoo
