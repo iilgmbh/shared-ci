@@ -231,14 +231,15 @@ def alle_tags(repo: str) -> dict[str, str]:
     return {t["name"]: t["commit"]["sha"] for seite in seiten for t in seite}
 
 
-def taggen(repo: str, tag: str, sha: str, nachricht: str) -> None:
-    objekt = gh(
-        "api", "-X", "POST", f"repos/{repo}/git/tags", "--input", "-",
-        eingabe={"tag": tag, "message": nachricht, "object": sha, "type": "commit"},
-    )
+def taggen(repo: str, tag: str, sha: str) -> None:
+    # Leichter Tag: die Ref zeigt direkt auf den Commit, kein Tag-Objekt. Unter
+    # einem annotierten Tag loest GitHub den lokalen Aufruf `./_review.yml` aus
+    # _ci-python.yml auf den SHA des Tag-Objekts auf, und jeder Push- oder
+    # Dispatch-Lauf eines Konsumenten endet mit startup_failure, 0 Jobs
+    # (shared-ci#112, Probe 19.10.: gleicher Commit, annotiert rot, leicht gruen).
     gh(
         "api", "-X", "POST", f"repos/{repo}/git/refs", "--input", "-",
-        eingabe={"ref": f"refs/tags/{tag}", "sha": objekt["sha"]},
+        eingabe={"ref": f"refs/tags/{tag}", "sha": sha},
     )
 
 
@@ -300,8 +301,8 @@ def lauf(repo: str, trocken: bool) -> int:
     if trocken:
         print(f"  wuerde taggen: {naechster} auf {main_sha[:8]} — {nachricht}")
     else:
-        taggen(repo, naechster, main_sha, nachricht)
-        print(f"  getaggt: {naechster} auf {main_sha[:8]}")
+        taggen(repo, naechster, main_sha)
+        print(f"  getaggt: {naechster} auf {main_sha[:8]} — {nachricht}")
     return ende
 
 

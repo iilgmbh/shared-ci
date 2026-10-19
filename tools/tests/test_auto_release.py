@@ -215,6 +215,7 @@ class GitHubStub:
     def __init__(self, prs, pr_files, vergleich):
         self.prs, self.pr_files, self.vergleich = prs, pr_files, vergleich
         self.schreibend: list[str] = []
+        self.eingaben: list[dict | None] = []
 
     def __call__(self, *args, eingabe=None):
         pfad = next((a for a in args if a.startswith("repos/")), "")
@@ -222,7 +223,8 @@ class GitHubStub:
             return self.prs
         if "-X" in args:
             self.schreibend.append(pfad)
-            return {"sha": "tagobjekt"}
+            self.eingaben.append(eingabe)
+            return {}
         if pfad.endswith("/files"):
             return [self.pr_files]
         if pfad.endswith("/commits/main"):
@@ -248,9 +250,20 @@ def test_should_merge_and_tag_version_only_change(monkeypatch):
     assert lauf_mit(monkeypatch, stub) == 0
     assert stub.schreibend == [
         "repos/iilgmbh/shared-ci/pulls/91/merge",
-        "repos/iilgmbh/shared-ci/git/tags",
         "repos/iilgmbh/shared-ci/git/refs",
     ]
+
+
+def test_should_create_lightweight_tag_on_main_commit(monkeypatch):
+    # shared-ci#112: annotierte Tags brechen den lokalen Aufruf von _review.yml
+    stub = GitHubStub(
+        [pr(headRefOid="kopf", title="bump")],
+        [datei(PATCH_91)],
+        {"status": "ahead", "ahead_by": 1, "files": [datei(PATCH_91)]},
+    )
+    assert lauf_mit(monkeypatch, stub) == 0
+    assert "repos/iilgmbh/shared-ci/git/tags" not in stub.schreibend
+    assert stub.eingaben[-1] == {"ref": "refs/tags/v1.1.22", "sha": "mainsha00"}
 
 
 def test_should_not_write_in_dry_run(monkeypatch):
