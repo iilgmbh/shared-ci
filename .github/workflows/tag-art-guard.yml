@@ -1,0 +1,32 @@
+# tag-art-guard.yml — Release-Tags muessen leichte Tags sein (shared-ci#112).
+#
+# Unter einem annotierten Tag startet in Konsumenten kein Push- oder
+# Dispatch-Lauf von _ci-python.yml (lokaler Aufruf von _review.yml), PR-Laeufe
+# bleiben gruen. Dieser Lauf schlaegt beim Tag-Push an, bevor Renovate den Tag
+# in die Konsumenten traegt. workflow_dispatch prueft einen beliebigen Tag,
+# auch als Drill gegen einen bekannten annotierten Tag.
+name: tag-art guard
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Zu pruefender Tag, z. B. v1.1.28"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  tag-art:
+    name: "Release-Tag ist leicht"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: bash scripts/checks/tag_art_check.sh "$TAG"
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}

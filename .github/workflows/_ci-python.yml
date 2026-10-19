@@ -901,6 +901,9 @@ jobs:
 
   # Review-Check Stufe 1 (KONZ-platform-070 Z2, platform#3903 WP2): hinter Schalter,
   # advisory, nicht Teil von gate — Befunde erscheinen als Annotations am PR.
+  # Der lokale Aufruf `./` traegt nur unter leichten Tags: unter einem annotierten
+  # Tag startet kein Push- oder Dispatch-Lauf eines Konsumenten (shared-ci#112).
+  # tag-art-guard.yml prueft jeden v*-Tag.
   review:
     if: ${{ inputs.enable_review && github.event_name == 'pull_request' }}
     uses: ./.github/workflows/_review.yml
