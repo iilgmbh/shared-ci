@@ -37,6 +37,13 @@ services:
 
       '
     prod_host: gx10
+  forgejo-pilot:
+    betriebsstatus: blockiert
+    betriebsstatus_grund: 'Forgejo-Pilot KONZ-platform-072 auf dev-desktop, hinter
+      Cloudflare Access nur fuer Owner und Service-Token iilbuttler (Owner-Wort FJTgo
+      2026-10-19, platform#4018). Pilot, kein Prod-Dienst: blockiert = laeuft, ausserhalb
+      der Erreichbarkeits-Pruefung. Rueckbau am Gate 2027-01-15.'
+    prod_host: dev-desktop
   frist-hub:
     betriebsstatus: blockiert
     betriebsstatus_grund: prod blockiert auf Hosting-ADR (meiki-lra Sozialdaten-Pilot)
