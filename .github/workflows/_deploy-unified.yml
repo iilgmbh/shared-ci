@@ -322,7 +322,7 @@ jobs:
         # (shared-ci#88). Per SHA gepinnt, nicht per ./ — ein ./-Pfad zeigte hier
         # auf den Checkout des Consumers. Pin-Waechter:
         # scripts/checks/deploy_remote_exec_check.sh
-        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@36cdb03f89107fd9ba2d7010f8f7517f99ec92ae # remote-exec (#88)
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
@@ -335,7 +335,7 @@ jobs:
           overwrite: true
 
       - name: Deploy to staging
-        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@36cdb03f89107fd9ba2d7010f8f7517f99ec92ae # remote-exec (#88)
         timeout-minutes: 15
         env:
           # Kurzlebiger Workflow-Token → deploy.sh loggt damit frisch bei GHCR ein,
@@ -558,7 +558,7 @@ jobs:
       - name: Sync compose + manifest to host (remote runner)
         if: startsWith(inputs.runs_on, 'ubuntu')
         # eigene Composite mit nativem ssh — siehe Staging-Sync oben (#88).
-        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@36cdb03f89107fd9ba2d7010f8f7517f99ec92ae # remote-exec (#88)
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -591,7 +591,7 @@ jobs:
 
       - name: Deploy to production (SSH — remote runner)
         if: startsWith(inputs.runs_on, 'ubuntu')
-        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@36cdb03f89107fd9ba2d7010f8f7517f99ec92ae # remote-exec (#88)
         timeout-minutes: 15
         env:
           # Siehe Staging-Step: frischer GHCR-Login statt veralteter Host-Token-Datei.

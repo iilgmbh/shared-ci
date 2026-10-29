@@ -133,7 +133,7 @@ jobs:
       # Genau die Referenz, die _deploy-unified.yml/_deploy-hetzner.yml nutzen.
       # Beweist, dass der Pin von GitHub aufgeloest wird und dort dasselbe tut.
       - name: "copy mit strip_components ueber den SHA-Pin der Reusables"
-        uses: iilgmbh/shared-ci/.github/actions/remote-exec@994575a009430e95eb86925c8ed10d55523b7897 # remote-exec (#88)
+        uses: iilgmbh/shared-ci/.github/actions/remote-exec@36cdb03f89107fd9ba2d7010f8f7517f99ec92ae # remote-exec (#88)
         with:
           host: 127.0.0.1:${{ env.RX_T_PORT }}
           username: ${{ env.RX_T_USER }}
